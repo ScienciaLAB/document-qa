@@ -4,7 +4,7 @@ emoji: 📝
 colorFrom: yellow
 colorTo: pink
 sdk: streamlit
-sdk_version: 1.37.1
+sdk_version: 1.45.1
 app_file: streamlit_app.py
 pinned: false
 license: apache-2.0
