@@ -15,7 +15,7 @@ from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.vectorstores import VectorStore
 from tqdm import tqdm
 
-from document_qa.grobid_processors import GrobidProcessor
+from document_qa.grobid_processors import GrobidProcessor, GrobidServiceError
 from document_qa.langchain import ChromaAdvancedRetrieval
 
 
@@ -376,6 +376,8 @@ class DocumentQAEngine:
         filename = Path(pdf_file_path).stem
         coordinates = True  # if chunk_size == -1 else False
         structure = self.grobid_processor.process_structure(pdf_file_path, coordinates=coordinates)
+        if not structure:
+            raise GrobidServiceError("Grobid did not return a response.")
 
         biblio = structure['biblio']
         biblio['filename'] = filename.replace(" ", "_")
