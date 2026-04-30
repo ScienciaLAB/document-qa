@@ -1,3 +1,14 @@
+"""Streamlit frontend for the Document Q/A system.
+
+This module implements the web UI for uploading scientific PDFs,
+asking questions via an LLM-powered RAG pipeline, and viewing
+highlighted PDF passages.  It is the main entry-point when running::
+
+    streamlit run streamlit_app.py
+
+Configuration is loaded from environment variables (see ``.env.example``).
+"""
+
 import os
 import re
 from hashlib import blake2b
@@ -110,6 +121,11 @@ st.markdown(
 
 
 def new_file():
+    """Reset session state when a new file is uploaded.
+
+    Clears previous embeddings, annotations, and conversation memory
+    so the pipeline starts fresh for the new document.
+    """
     st.session_state['loaded_embeddings'] = None
     st.session_state['doc_id'] = None
     st.session_state['uploaded'] = True
@@ -119,11 +135,22 @@ def new_file():
 
 
 def clear_memory():
+    """Clear the conversation buffer memory (chat history)."""
     st.session_state['memory'].clear()
 
 
 # @st.cache_resource
 def init_qa(model_name, embeddings_name):
+    """Initialise the Q/A engine with the selected LLM and embedding models.
+
+    Args:
+        model_name: Key from ``API_MODELS`` selecting the LLM.
+        embeddings_name: Key from ``API_EMBEDDINGS`` selecting the
+            embedding model.
+
+    Returns:
+        DocumentQAEngine: Ready-to-use engine instance.
+    """
     st.session_state['memory'] = ConversationBufferMemory(
         memory_key="chat_history",
         return_messages=True
@@ -147,6 +174,14 @@ def init_qa(model_name, embeddings_name):
 
 @st.cache_resource
 def init_ner():
+    """Initialise the NER aggregation processor (quantities + materials).
+
+    Uses ``GROBID_QUANTITIES_URL`` and ``GROBID_MATERIALS_URL`` from
+    the environment.  Results are cached across Streamlit reruns.
+
+    Returns:
+        GrobidAggregationProcessor: Configured processor instance.
+    """
     quantities_client = QuantitiesAPI(os.environ['GROBID_QUANTITIES_URL'], check_server=True)
 
     materials_client = NERClientGeneric(ping=True)
@@ -173,6 +208,10 @@ gqa = init_ner()
 
 
 def get_file_hash(fname):
+    """Compute a BLAKE2b hex digest for the file at *fname*.
+
+    Used to generate deterministic document IDs from file content.
+    """
     hash_md5 = blake2b()
     with open(fname, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -181,6 +220,11 @@ def get_file_hash(fname):
 
 
 def play_old_messages(container):
+    """Re-render previous chat messages into *container*.
+
+    Called on Streamlit reruns to restore the visible conversation
+    history from ``st.session_state['messages']``.
+    """
     if st.session_state['messages']:
         for message in st.session_state['messages']:
             if message['role'] == 'user':
@@ -330,10 +374,22 @@ if uploaded_file and not st.session_state.loaded_embeddings:
 
 
 def rgb_to_hex(rgb):
+    """Convert an ``(R, G, B)`` tuple to a ``#rrggbb`` hex string."""
     return "#{:02x}{:02x}{:02x}".format(*rgb)
 
 
 def generate_color_gradient(num_elements):
+    """Generate a warm-to-cold hex colour gradient for annotation ranking.
+
+    The first colour (most relevant passage) is orange; the last (least
+    relevant) is blue.  Intermediate colours are linearly interpolated.
+
+    Args:
+        num_elements: Number of gradient stops to produce.
+
+    Returns:
+        list[str]: Hex colour strings, e.g. ``['#ffa500', …, '#0000ff']``.
+    """
     # Define warm and cold colors in RGB format
     warm_color = (255, 165, 0)  # Orange
     cold_color = (0, 0, 255)  # Blue
