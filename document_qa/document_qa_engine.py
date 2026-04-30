@@ -219,7 +219,7 @@ class DocumentQAEngine:
         self.data_storage = data_storage
 
         if grobid_url:
-            self.grobid_processor = GrobidProcessor(grobid_url)
+            self.grobid_processor = GrobidProcessor(grobid_url, ping_server=False)
 
     def query_document(
             self,

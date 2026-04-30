@@ -313,13 +313,13 @@ if uploaded_file and not st.session_state.loaded_embeddings:
         st.stop()
 
     with left_column:
-        with st.spinner('Reading file, calling Grobid, and creating in-memory embeddings...'):
-            binary = uploaded_file.getvalue()
-            tmp_file = NamedTemporaryFile()
-            tmp_file.write(bytearray(binary))
-            st.session_state['binary'] = binary
+        try:
+            with st.spinner('Reading file, calling Grobid, and creating in-memory embeddings...'):
+                binary = uploaded_file.getvalue()
+                tmp_file = NamedTemporaryFile()
+                tmp_file.write(bytearray(binary))
+                st.session_state['binary'] = binary
 
-            try:
                 st.session_state['doc_id'] = hash = st.session_state['rqa'][model].create_memory_embeddings(
                     tmp_file.name,
                     chunk_size=chunk_size,
@@ -327,13 +327,13 @@ if uploaded_file and not st.session_state.loaded_embeddings:
                 )
                 st.session_state['loaded_embeddings'] = True
                 st.session_state.messages = []
-            except GrobidServiceError as exc:
-                status = f" (status {exc.status_code})" if exc.status_code else ""
-                st.session_state['doc_id'] = None
-                st.session_state['loaded_embeddings'] = False
-                st.session_state['uploaded'] = False
-                st.error(f"Grobid is not responding{status}. Please try later.")
-                st.stop()
+        except GrobidServiceError as exc:
+            status = f" (status {exc.status_code})" if exc.status_code else ""
+            st.session_state['doc_id'] = None
+            st.session_state['loaded_embeddings'] = False
+            st.session_state['uploaded'] = False
+            st.error(f"Grobid is not responding{status}. Please try later.")
+            st.stop()
 
 
 def rgb_to_hex(rgb):
