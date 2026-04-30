@@ -1,3 +1,18 @@
+"""GROBID-based processors for scientific text extraction.
+
+This module provides processors that interact with GROBID services to:
+
+- **Extract structured text** from scientific PDFs (:class:`GrobidProcessor`)
+  — parses TEI-XML into passages with section labels and PDF coordinates.
+- **Annotate physical quantities** (:class:`GrobidQuantitiesProcessor`)
+  — identifies measurements via the grobid-quantities service.
+- **Annotate materials** (:class:`GrobidMaterialsProcessor`)
+  — identifies material mentions via grobid-superconductors.
+- **Aggregate NER results** (:class:`GrobidAggregationProcessor`)
+  — combines quantity and material annotations with overlap pruning.
+
+"""
+
 import re
 from collections import OrderedDict
 from html import escape
@@ -10,6 +25,7 @@ from grobid_client.grobid_client import GrobidClient
 
 
 def get_span_start(type, title=None):
+    """Return an opening ``<span>`` tag for an annotation of the given *type*."""
     title_ = ' title="' + title + '"' if title is not None else ""
     return '<span class="label ' + type + '"' + title_ + '>'
 
@@ -31,10 +47,19 @@ def has_space_between_value_and_unit(quantity):
 
 
 def decorate_text_with_annotations(text, spans, tag="span"):
-    """
-        Decorate a text using spans, using two style defined by the tag:
-            - "span" generated HTML like annotated text
-            - "rs" generate XML like annotated text (format SuperMat)
+    """Wrap recognised entity spans in markup tags.
+
+    Produces either HTML (``<span class="label …">``) or TEI-XML
+    (``<rs type="…">``) depending on *tag*.
+
+    Args:
+        text: The original plain-text string.
+        spans: List of span dicts with at least ``offset_start``,
+            ``offset_end``, and ``type`` keys.
+        tag: ``"span"`` (default) for HTML output, ``"rs"`` for XML.
+
+    Returns:
+        str: The text with inline annotation markup.
     """
     sorted_spans = list(sorted(spans, key=lambda item: item['offset_start']))
     annotated_text = ""
@@ -60,15 +85,26 @@ def get_parsed_value_type(quantity):
 
 
 class BaseProcessor(object):
-    # def __init__(self, grobid_superconductors_client=None, grobid_quantities_client=None):
-    #     self.grobid_superconductors_client = grobid_superconductors_client
-    #     self.grobid_quantities_client = grobid_quantities_client
+    """Shared post-processing logic for all GROBID-derived processors.
+
+    Fixes common character-encoding artefacts produced by PDF extraction
+    (e.g. ``À`` → ``-``, ``¼`` → ``=``).  All processor subclasses
+    inherit :meth:`post_process` from here.
+    """
 
     patterns = [
         r'\d+e\d+'
     ]
 
     def post_process(self, text):
+        """Clean encoding artefacts and normalise special characters.
+
+        Args:
+            text: Raw extracted text from GROBID.
+
+        Returns:
+            str: Cleaned text.
+        """
         output = text.replace('À', '-')
         output = output.replace('¼', '=')
         output = output.replace('þ', '+')
@@ -84,8 +120,25 @@ class BaseProcessor(object):
 
 
 class GrobidProcessor(BaseProcessor):
+    """Extract structured text and coordinates from PDFs via GROBID.
+
+    Sends a PDF to a running GROBID server, parses the returned TEI-XML,
+    and produces a list of passage dicts with text content, section labels,
+    and bounding-box coordinates for each paragraph.
+
+    Args:
+        grobid_url: Full URL of the GROBID server
+            (e.g. ``"https://grobid.example.com"``).
+        ping_server: If ``True`` (default), verify the server is alive
+            on init.
+
+    Raises:
+        ServerUnavailableException: If *ping_server* is ``True`` and the
+            GROBID server does not respond.
+
+    """
+
     def __init__(self, grobid_url, ping_server=True):
-        # super().__init__()
         grobid_client = GrobidClient(
             grobid_server=grobid_url,
             batch_size=5,
@@ -97,6 +150,24 @@ class GrobidProcessor(BaseProcessor):
         self.grobid_client = grobid_client
 
     def process_structure(self, input_path, coordinates=False):
+        """Send a PDF to GROBID and return structured content.
+
+        Args:
+            input_path: Path to the PDF file.
+            coordinates: If ``True``, include bounding-box coordinate
+                strings in each passage (needed for PDF highlighting).
+
+        Returns:
+            dict or None: A dict with keys:
+
+            - ``"biblio"`` — bibliographic metadata (title, authors, DOI, …).
+            - ``"passages"`` — list of passage dicts, each containing
+              ``text``, ``type``, ``section``, ``subSection``,
+              ``passage_id``, and ``coordinates``.
+            - ``"filename"`` — stem of the PDF filename.
+
+            Returns ``None`` if GROBID returns a non-200 status.
+        """
         pdf_file, status, text = self.grobid_client.process_pdf("processFulltextDocument",
                                                                 input_path,
                                                                 consolidate_header=True,
@@ -125,6 +196,19 @@ class GrobidProcessor(BaseProcessor):
         return doc
 
     def parse_grobid_xml(self, text, coordinates=False):
+        """Parse GROBID TEI-XML into a structured passage dict.
+
+        Extracts title, abstract, body paragraphs, back-matter, and
+        figure descriptions from the XML, post-processes encoding
+        artefacts, and attaches coordinate metadata.
+
+        Args:
+            text: Raw TEI-XML string returned by GROBID.
+            coordinates: Whether to extract ``coords`` attributes.
+
+        Returns:
+            dict: ``{"biblio": {…}, "passages": […]}``
+        """
         output_data = OrderedDict()
 
         doc_biblio = grobid_tei_xml.parse_document_xml(text)
@@ -256,10 +340,29 @@ class GrobidProcessor(BaseProcessor):
 
 
 class GrobidQuantitiesProcessor(BaseProcessor):
+    """NER processor for physical quantities (measurements, units).
+
+    Wraps the `grobid-quantities <https://github.com/kermitt2/grobid-quantities>`_
+    service to identify and normalise measurements in text.
+
+    Args:
+        grobid_quantities_client: A configured quantities API client
+    """
+
     def __init__(self, grobid_quantities_client):
         self.grobid_quantities_client = grobid_quantities_client
 
     def process(self, text) -> list:
+        """Extract quantity spans from *text*.
+
+        Args:
+            text: Plain text to analyse.
+
+        Returns:
+            list[dict]: Span dicts with ``offset_start``, ``offset_end``,
+            ``type`` (``"property"``), and optional ``unit_type`` /
+            ``quantified`` keys.
+        """
         status, result = self.grobid_quantities_client.process_text(text.strip())
 
         if status != 200:
@@ -428,10 +531,29 @@ class GrobidQuantitiesProcessor(BaseProcessor):
 
 
 class GrobidMaterialsProcessor(BaseProcessor):
+    """NER processor for material mentions (chemical compounds, etc.).
+
+    Wraps the `grobid-superconductors <https://github.com/lfoppiano/grobid-superconductors>`_
+    service.
+
+    Args:
+        grobid_superconductors_client: A configured
+            :class:`~document_qa.ner_client_generic.NERClientGeneric` instance.
+    """
+
     def __init__(self, grobid_superconductors_client):
         self.grobid_superconductors_client = grobid_superconductors_client
 
     def process(self, text):
+        """Extract material-mention spans from *text*.
+
+        Args:
+            text: Plain text to analyse.
+
+        Returns:
+            list[dict]: Span dicts with ``offset_start``, ``offset_end``,
+            ``type`` (``"material"``), and optional ``formula`` keys.
+        """
         preprocessed_text = text.strip()
         status, result = self.grobid_superconductors_client.process_text(preprocessed_text,
                                                                          "processText_disable_linking")
@@ -528,6 +650,20 @@ class GrobidMaterialsProcessor(BaseProcessor):
 
 
 class GrobidAggregationProcessor(GrobidQuantitiesProcessor, GrobidMaterialsProcessor):
+    """Combined NER processor that merges quantity and material annotations.
+
+    Runs both :class:`GrobidQuantitiesProcessor` and
+    :class:`GrobidMaterialsProcessor`, then prunes overlapping spans so
+    that the output is clean and non-overlapping.
+
+    Args:
+        grobid_quantities_client: Optional quantities API client.
+        grobid_superconductors_client: Optional materials NER client.
+
+    Either or both clients may be ``None``; only the provided services
+    will be called.
+    """
+
     def __init__(self, grobid_quantities_client=None, grobid_superconductors_client=None):
         if grobid_quantities_client:
             self.gqp = GrobidQuantitiesProcessor(grobid_quantities_client)
@@ -535,6 +671,14 @@ class GrobidAggregationProcessor(GrobidQuantitiesProcessor, GrobidMaterialsProce
             self.gmp = GrobidMaterialsProcessor(grobid_superconductors_client)
 
     def process_single_text(self, text):
+        """Run both NER services on *text* and return merged, deduplicated spans.
+
+        Args:
+            text: Plain text to process.
+
+        Returns:
+            list[dict]: Non-overlapping span dicts sorted by offset.
+        """
         extracted_quantities_spans = self.process_properties(text)
         extracted_materials_spans = self.process_materials(text)
         all_entities = extracted_quantities_spans + extracted_materials_spans
@@ -555,6 +699,18 @@ class GrobidAggregationProcessor(GrobidQuantitiesProcessor, GrobidMaterialsProce
 
     @staticmethod
     def box_to_dict(box, color=None, type=None, border=None):
+        """Convert a GROBID coordinate list into an annotation dict.
+
+        Args:
+            box: List or tuple of ``[page, x, y, width, height]``.
+            color: Optional hex colour string for the annotation.
+            type: Optional annotation type label.
+            border: Optional border style (e.g. ``"dotted"``).
+
+        Returns:
+            dict: Annotation dict suitable for ``streamlit-pdf-viewer``,
+            or empty dict if *box* is invalid.
+        """
 
         if box is None or box == "" or len(box) < 5:
             return {}
@@ -573,6 +729,18 @@ class GrobidAggregationProcessor(GrobidQuantitiesProcessor, GrobidMaterialsProce
 
     @staticmethod
     def prune_overlapping_annotations(entities: list) -> list:
+        """Remove overlapping spans, keeping the most informative one.
+
+        When two spans overlap, the longer span is preferred.  Adjacent
+        spans of the same type may be merged (e.g. a split decimal number).
+
+        Args:
+            entities: List of span dicts with ``offset_start``,
+                ``offset_end``, ``type``, and ``text`` keys.
+
+        Returns:
+            list[dict]: Pruned, non-overlapping spans sorted by offset.
+        """
         # Sorting by offsets
         sorted_entities = sorted(entities, key=lambda d: d['offset_start'])
 
