@@ -328,11 +328,12 @@ if uploaded_file and not st.session_state.loaded_embeddings:
                 st.session_state['loaded_embeddings'] = True
                 st.session_state.messages = []
         except GrobidServiceError as exc:
+            message = str(exc).strip() or "Grobid is not responding"
             status = f" (status {exc.status_code})" if exc.status_code else ""
             st.session_state['doc_id'] = None
             st.session_state['loaded_embeddings'] = False
             st.session_state['uploaded'] = False
-            st.error(f"Grobid is not responding{status}. Please try later.")
+            st.error(f"{message} Please try later.")
             st.stop()
 
 
