@@ -57,4 +57,31 @@ jobs:
           pushImage: ${{ github.event_name != 'pull_request' }}
           tags: latest-develop
       - name: Image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+        run: echo ${{ steps.docker_build.outputs.digest }}  
+  hf-space-deploy:
+    needs: [docker-build]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy to HuggingFace Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://huggingface.co/spaces/sciencialab/document-qa-dev/restart?factory=true" \
+            -H "Authorization: Bearer $HF_TOKEN")
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+          
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "## HuggingFace Space Deployment" >> $GITHUB_STEP_SUMMARY
+            echo "Successfully deployed to [document-qa-dev](https://huggingface.co/spaces/sciencialab/document-qa-dev)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo " Deployment failed (HTTP $http_code): $body"
+            exit 1
+          fi
+        
