@@ -1,3 +1,9 @@
+"""Core Q/A engine for scientific PDF documents.
+
+This module provides the main classes for building a Retrieval-Augmented
+Generation (RAG) pipeline over scientific PDFs.
+"""
+
 import copy
 import os
 from pathlib import Path
@@ -20,9 +26,17 @@ from document_qa.langchain import ChromaAdvancedRetrieval
 
 
 class TextMerger:
-    """
-    This class tries to replicate the RecursiveTextSplitter from LangChain, to preserve and merge the
-    coordinate information from the PDF document.
+    """Token-aware text merger that preserves PDF coordinate metadata.
+
+    Unlike LangChain's ``RecursiveTextSplitter``, this merger keeps the
+    bounding-box coordinates extracted by GROBID so that downstream
+    consumers (e.g. the PDF viewer) can highlight the exact regions.
+
+    Args:
+        model_name: A tiktoken model name (e.g. ``"gpt-4"``).  When given,
+            the tokenizer for that model is used.  
+        encoding_name: A tiktoken encoding name (default ``"gpt2"``).
+            Ignored when *model_name* is provided.
     """
 
     def __init__(self, model_name=None, encoding_name="gpt2"):
@@ -32,6 +46,19 @@ class TextMerger:
             self.enc = tiktoken.get_encoding(encoding_name)
 
     def encode(self, text, allowed_special=set(), disallowed_special="all"):
+        """Tokenize *text* and return a list of token IDs.
+
+        Thin wrapper around ``tiktoken.Encoding.encode`` that exposes the
+        same special-token controls.
+
+        Args:
+            text: The string to tokenize.
+            allowed_special: Set of special tokens allowed in *text*.
+            disallowed_special: Special-token handling policy.
+
+        Returns:
+            list[int]: Token IDs produced by the configured tokenizer.
+        """
         return self.enc.encode(
             text,
             allowed_special=allowed_special,
@@ -39,6 +66,24 @@ class TextMerger:
         )
 
     def merge_passages(self, passages, chunk_size, tolerance=0.2):
+        """Merge consecutive passages into chunks of approximately *chunk_size* tokens.
+
+        Args:
+            passages: List of dicts, each with ``"text"`` (str) and
+                ``"coordinates"`` (str) keys — as returned by
+                method:`GrobidProcessor.process_structure`.
+            chunk_size: Target number of tokens per merged chunk.
+            tolerance: Fraction of *chunk_size* allowed as overflow
+                (default ``0.2``).
+
+        Returns:
+            list[dict]: Merged passages.  Each dict has:
+
+            - ``"text"`` — concatenated paragraph texts.
+            - ``"coordinates"`` — semicolon-joined coordinate strings.
+            - ``"type"`` — always ``"aggregated chunks"``.
+            - ``"section"`` / ``"subSection"`` — always ``"mixed"``.
+        """
         new_passages = []
         new_coordinates = []
         current_texts = []
@@ -94,6 +139,8 @@ class TextMerger:
 
 
 class BaseRetrieval:
+    """Abstract base for retrieval backends.
+    """
 
     def __init__(
             self,
@@ -119,6 +166,19 @@ engines = {
 
 
 class DataStorage:
+    """Manages per-document vector-store collections.
+
+    Each uploaded PDF gets its own ChromaDB collection,
+    keyed by a document ID (typically an MD5 hash).  Collections can live
+    in memory or be persisted to disk.
+
+    Args:
+        embedding_function: A LangChain-compatible ``Embeddings`` instance
+        root_path: Optional directory for persisted embeddings. 
+        engine: The vector-store class to use.
+
+    """
+
     embeddings_dict = {}
     embeddings_map_from_md5 = {}
     embeddings_map_to_md5 = {}
@@ -167,15 +227,25 @@ class DataStorage:
         print("Embedding loaded: ", len(self.embeddings_dict.keys()))
 
     def get_loaded_embeddings_ids(self):
+        """Return the document IDs (MD5 hashes) of all loaded collections."""
         return list(self.embeddings_dict.keys())
 
     def get_md5_from_filename(self, filename):
+        """Look up the MD5 document ID for a given original *filename*."""
         return self.embeddings_map_to_md5[filename]
 
     def get_filename_from_md5(self, md5):
+        """Look up the original filename for a given *md5* document ID."""
         return self.embeddings_map_from_md5[md5]
 
     def embed_document(self, doc_id, texts, metadatas):
+        """Create (or replace) an in-memory vector collection for a document.
+
+        Args:
+            doc_id: Unique identifier for the document.
+            texts: List of text chunks to embed.
+            metadatas: List of metadata dicts (one per chunk).
+        """
         if doc_id not in self.embeddings_dict.keys():
             self.embeddings_dict[doc_id] = self.engine.from_texts(
                 texts,
@@ -195,6 +265,24 @@ class DataStorage:
 
 
 class DocumentQAEngine:
+    """End-to-end RAG engine for scientific PDF documents.
+
+    Orchestrates the full pipeline:
+
+    1. **PDF parsing** via a GROBID server (structured text + coordinates).
+    2. **Chunking** — paragraphs kept as-is or merged with :class:`TextMerger`.
+    3. **Embedding and storage**  chunks are embedded and stored.
+    4. **Retrieval + LLM** — relevant chunks are retrieved and fed to an LLM
+       to produce an answer.
+
+    Args:
+        llm: A LangChain chat model (e.g. ``ChatOpenAI``).
+        data_storage: A `DataStorage` instance for managing embeddings.
+        grobid_url: URL of the GROBID server. 
+        memory: Optional ``ConversationBufferMemory`` for multi-turn context.
+
+    """
+
     llm = None
     qa_chain_type = None
 
@@ -229,7 +317,30 @@ class DocumentQAEngine:
             context_size=4,
             extraction_schema=None,
             verbose=False
-    ) -> (Any, str):
+    ) -> tuple[Any, str]:
+        """Ask a question and get an LLM-generated answer.
+
+        Retrieves the most relevant chunks from the vector store, feeds
+        them as context to the LLM, and returns the response.
+
+        Args:
+            query: The natural-language question.
+            doc_id: Document identifier returned by create_memory_embeddings`.
+            output_parser: Optional LangChain output parser.  If provided the
+                raw LLM response is re-processed into structured output.
+            context_size: Number of chunks to retrieve as context (default 4).
+            extraction_schema: Optional extraction schema.
+            verbose: Print debug information.
+
+        Returns:
+            tuple: ``(parsed_output | None, raw_text_response, coordinates)``
+
+            - *parsed_output* — structured data if a parser/schema was given,
+              otherwise ``None``.
+            - *raw_text_response* — the LLM's raw text answer.
+            - *coordinates* — list of lists of coordinate strings for each
+              retrieved chunk (for PDF highlighting).
+        """
         # self.load_embeddings(self.embeddings_root_path)
 
         if verbose:
@@ -258,9 +369,22 @@ class DocumentQAEngine:
         else:
             return None, response, coordinates
 
-    def query_storage(self, query: str, doc_id, context_size=4) -> (List[Document], list):
-        """
-        Returns the context related to a given query
+    def query_storage(self, query: str, doc_id, context_size=4) -> tuple[List[Document], list]:
+        """Retrieve relevant text passages without calling the LLM.
+
+        Useful for debugging which chunks would be used as context, or for
+        building custom pipelines on top of the retrieval step.
+
+        Args:
+            query: The natural-language question.
+            doc_id: Document identifier.
+            context_size: Number of chunks to retrieve (default 4).
+
+        Returns:
+            tuple: ``(texts, coordinates)``
+
+            - *texts* — list of passage strings.
+            - *coordinates* — list of lists of coordinate strings.
         """
         documents, coordinates = self._get_context(doc_id, query, context_size)
 
@@ -268,8 +392,21 @@ class DocumentQAEngine:
         return context_as_text, coordinates
 
     def query_storage_and_embeddings(self, query: str, doc_id, context_size=4) -> List[Document]:
-        """
-        Returns both the context and the embedding information from a given query
+        """Retrieve passages with their similarity scores and raw embeddings.
+
+        Each returned ``Document`` has extra metadata keys:
+
+        - ``__similarity`` — cosine distance to the query.
+        - ``__embeddings`` — the chunk's embedding vector.
+
+        Args:
+            query: The natural-language question.
+            doc_id: Document identifier.
+            context_size: Number of chunks to retrieve (default 4).
+
+        Returns:
+            list[Document]: Retrieved documents enriched with similarity and
+            embedding metadata.
         """
         db = self.data_storage.embeddings_dict[doc_id]
         retriever = db.as_retriever(
@@ -281,6 +418,20 @@ class DocumentQAEngine:
         return relevant_documents
 
     def analyse_query(self, query, doc_id, context_size=4):
+        """Compute a relevance coefficient for *query* against *doc_id*.
+
+        The coefficient is ``min_similarity - mean_similarity`` over the
+        top-k retrieved chunks.  A value close to zero suggests the
+        question matches multiple passages equally well.
+
+        Args:
+            query: The natural-language question.
+            doc_id: Document identifier.
+            context_size: Number of chunks to consider (default 4).
+
+        Returns:
+            tuple: ``(summary_string, coordinates)``
+        """
         db = self.data_storage.embeddings_dict[doc_id]
         # retriever = db.as_retriever(
         #     search_kwargs={"k": context_size, 'score_threshold': 0.0},
@@ -329,12 +480,12 @@ class DocumentQAEngine:
 
         return parsed_output
 
-    def _run_query(self, doc_id, query, context_size=4) -> (List[Document], list):
+    def _run_query(self, doc_id, query, context_size=4) -> tuple[List[Document], list]:
         relevant_documents, relevant_document_coordinates = self._get_context(doc_id, query, context_size)
         response = self.chain.invoke({"context": relevant_documents, "question": query})
         return response, relevant_document_coordinates
 
-    def _get_context(self, doc_id, query, context_size=4) -> (List[Document], list):
+    def _get_context(self, doc_id, query, context_size=4) -> tuple[List[Document], list]:
         db = self.data_storage.embeddings_dict[doc_id]
         retriever = db.as_retriever(search_kwargs={"k": context_size})
         relevant_documents = retriever.invoke(query)
@@ -366,10 +517,28 @@ class DocumentQAEngine:
         return relevant_documents
 
     def get_text_from_document(self, pdf_file_path, chunk_size=-1, perc_overlap=0.1, verbose=False):
-        """
-        Extract text from documents using Grobid.
-        - if chunk_size is < 0, keeps each paragraph separately
-        - if chunk_size > 0, aggregate all paragraphs and split them again using an approximate chunk size
+        """Extract and chunk text from a PDF via GROBID.
+
+        Sends the PDF to the configured GROBID server, parses the returned
+        TEI-XML into passages with coordinate metadata, and optionally
+        merges passages into larger token-based chunks.
+
+        Args:
+            pdf_file_path: Path to the PDF file on disk.
+            chunk_size: Target tokens per chunk.  ``-1`` (default) keeps
+                GROBID paragraphs as-is; a positive value merges them.
+            perc_overlap: Reserved for future overlap support.
+            verbose: Print debug information.
+
+        Returns:
+            tuple: ``(texts, metadatas, ids)``
+
+            - *texts* — list of passage strings.
+            - *metadatas* — list of metadata dicts (coordinates, section, …).
+            - *ids* — list of integer chunk IDs.
+
+        Raises:
+            AttributeError: If ``grobid_url`` was not provided at init time.
         """
         if verbose:
             print("File", pdf_file_path)
@@ -416,6 +585,22 @@ class DocumentQAEngine:
             chunk_size=500,
             perc_overlap=0.1
     ):
+        """Parse a PDF and create an in-memory vector collection.
+
+        This is the main entry-point for ingesting a new document.  It
+        calls GROBID, chunks the text, embeds it, and stores everything in `data_storage`.
+
+        Args:
+            pdf_path: Path to the PDF file.
+            doc_id: Optional explicit document ID.  When ``None``, the
+                MD5 hash extracted by GROBID is used.
+            chunk_size: Token count per chunk (default 500).  Use ``-1``
+                to keep GROBID paragraphs intact.
+            perc_overlap: Reserved for future overlap support.
+
+        Returns:
+            str: The document ID.
+        """
         texts, metadata, ids = self.get_text_from_document(
             pdf_path,
             chunk_size=chunk_size,
@@ -436,6 +621,18 @@ class DocumentQAEngine:
             perc_overlap=0.1,
             include_biblio=False
     ):
+        """Batch-process a directory of PDFs and persist their embeddings.
+
+        Walks *pdfs_dir_path*, processes each ``.pdf`` file through GROBID,
+        creates embeddings, and persists the resulting ChromaDB collection
+        to a subdirectory named after the file's MD5.
+
+        Args:
+            pdfs_dir_path: Directory containing PDF files.
+            chunk_size: Token count per chunk (default 500).
+            perc_overlap: Reserved for future overlap support.
+            include_biblio: Reserved flag (currently unused).
+        """
         input_files = []
         for root, dirs, files in os.walk(pdfs_dir_path, followlinks=False):
             for file_ in files:
@@ -470,6 +667,8 @@ class DocumentQAEngine:
 
     @staticmethod
     def calculate_md5(input_file: Union[Path, str]):
+        """Return the uppercase hex MD5 digest of *input_file*."""
+
         import hashlib
         md5_hash = hashlib.md5()
         with open(input_file, 'rb') as fi:
