@@ -1,7 +1,7 @@
 import copy
 import os
 from pathlib import Path
-from typing import Union, Any, List
+from typing import Union, Any, List, Tuple
 
 import tiktoken
 from langchain.chains import create_extraction_chain
@@ -209,7 +209,8 @@ class DocumentQAEngine:
                  llm,
                  data_storage: DataStorage,
                  grobid_url=None,
-                 memory=None
+                 memory=None,
+                 ping_grobid_server: bool = False
                  ):
 
         self.llm = llm
@@ -219,7 +220,7 @@ class DocumentQAEngine:
         self.data_storage = data_storage
 
         if grobid_url:
-            self.grobid_processor = GrobidProcessor(grobid_url, ping_server=False)
+            self.grobid_processor = GrobidProcessor(grobid_url, ping_server=ping_grobid_server)
 
     def query_document(
             self,
@@ -229,7 +230,7 @@ class DocumentQAEngine:
             context_size=4,
             extraction_schema=None,
             verbose=False
-    ) -> (Any, str):
+    ) -> Tuple[Any, str]:
         # self.load_embeddings(self.embeddings_root_path)
 
         if verbose:
@@ -258,7 +259,7 @@ class DocumentQAEngine:
         else:
             return None, response, coordinates
 
-    def query_storage(self, query: str, doc_id, context_size=4) -> (List[Document], list):
+    def query_storage(self, query: str, doc_id, context_size=4) -> Tuple[List[Document], list]:
         """
         Returns the context related to a given query
         """
@@ -329,12 +330,12 @@ class DocumentQAEngine:
 
         return parsed_output
 
-    def _run_query(self, doc_id, query, context_size=4) -> (List[Document], list):
+    def _run_query(self, doc_id, query, context_size=4) -> Tuple[List[Document], list]:
         relevant_documents, relevant_document_coordinates = self._get_context(doc_id, query, context_size)
         response = self.chain.invoke({"context": relevant_documents, "question": query})
         return response, relevant_document_coordinates
 
-    def _get_context(self, doc_id, query, context_size=4) -> (List[Document], list):
+    def _get_context(self, doc_id, query, context_size=4) -> Tuple[List[Document], list]:
         db = self.data_storage.embeddings_dict[doc_id]
         retriever = db.as_retriever(search_kwargs={"k": context_size})
         relevant_documents = retriever.invoke(query)
