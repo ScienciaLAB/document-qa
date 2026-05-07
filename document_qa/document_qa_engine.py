@@ -7,7 +7,7 @@ Generation (RAG) pipeline over scientific PDFs.
 import copy
 import os
 from pathlib import Path
-from typing import Union, Any, List
+from typing import Union, Any, List, Tuple
 
 import tiktoken
 from langchain.chains import create_extraction_chain
@@ -34,7 +34,7 @@ class TextMerger:
 
     Args:
         model_name: A tiktoken model name (e.g. ``"gpt-4"``).  When given,
-            the tokenizer for that model is used.  
+            the tokenizer for that model is used.
         encoding_name: A tiktoken encoding name (default ``"gpt2"``).
             Ignored when *model_name* is provided.
     """
@@ -174,7 +174,7 @@ class DataStorage:
 
     Args:
         embedding_function: A LangChain-compatible ``Embeddings`` instance
-        root_path: Optional directory for persisted embeddings. 
+        root_path: Optional directory for persisted embeddings.
         engine: The vector-store class to use.
 
     """
@@ -278,7 +278,7 @@ class DocumentQAEngine:
     Args:
         llm: A LangChain chat model (e.g. ``ChatOpenAI``).
         data_storage: A `DataStorage` instance for managing embeddings.
-        grobid_url: URL of the GROBID server. 
+        grobid_url: URL of the GROBID server.
         memory: Optional ``ConversationBufferMemory`` for multi-turn context.
 
     """
@@ -297,7 +297,8 @@ class DocumentQAEngine:
                  llm,
                  data_storage: DataStorage,
                  grobid_url=None,
-                 memory=None
+                 memory=None,
+                 ping_grobid_server: bool = False
                  ):
 
         self.llm = llm
@@ -307,7 +308,7 @@ class DocumentQAEngine:
         self.data_storage = data_storage
 
         if grobid_url:
-            self.grobid_processor = GrobidProcessor(grobid_url, ping_server=False)
+            self.grobid_processor = GrobidProcessor(grobid_url, ping_server=ping_grobid_server)
 
     def query_document(
             self,
