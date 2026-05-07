@@ -9,6 +9,14 @@ from bs4 import BeautifulSoup
 from grobid_client.grobid_client import GrobidClient
 
 
+class GrobidServiceError(RuntimeError):
+    """Raised when the Grobid service fails to process a document."""
+
+    def __init__(self, message="Grobid service error", status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def get_span_start(type, title=None):
     title_ = ' title="' + title + '"' if title is not None else ""
     return '<span class="label ' + type + '"' + title_ + '>'
@@ -97,18 +105,24 @@ class GrobidProcessor(BaseProcessor):
         self.grobid_client = grobid_client
 
     def process_structure(self, input_path, coordinates=False):
-        pdf_file, status, text = self.grobid_client.process_pdf("processFulltextDocument",
-                                                                input_path,
-                                                                consolidate_header=True,
-                                                                consolidate_citations=False,
-                                                                segment_sentences=False,
-                                                                tei_coordinates=coordinates,
-                                                                include_raw_citations=False,
-                                                                include_raw_affiliations=False,
-                                                                generateIDs=True)
+        try:
+            pdf_file, status, text = self.grobid_client.process_pdf("processFulltextDocument",
+                                                                    input_path,
+                                                                    consolidate_header=True,
+                                                                    consolidate_citations=False,
+                                                                    segment_sentences=False,
+                                                                    tei_coordinates=coordinates,
+                                                                    include_raw_citations=False,
+                                                                    include_raw_affiliations=False,
+                                                                    generateIDs=True)
+        except Exception as exc:
+            raise GrobidServiceError("Grobid service did not respond.") from exc
 
         if status != 200:
-            return
+            raise GrobidServiceError(
+                f"Grobid service returned status {status}.",
+                status_code=status
+            )
 
         document_object = self.parse_grobid_xml(text, coordinates=coordinates)
         document_object['filename'] = Path(pdf_file).stem.replace(".tei", "")
@@ -137,7 +151,7 @@ class GrobidProcessor(BaseProcessor):
         try:
             year = dateparser.parse(doc_biblio.header.date).year
             biblio["publication_year"] = year
-        except:
+        except Exception:
             pass
 
         output_data['biblio'] = biblio
