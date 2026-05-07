@@ -1,6 +1,6 @@
 # 📝 document-qa-engine documentation
 
-> **Version**: 0.5.1 · **License**: Apache 2.0 · **PyPI**: `pip install document-qa-engine`
+>  **License**: Apache 2.0 · **PyPI**: `pip install document-qa-engine`
 
 A Python library and Streamlit application for **Question/Answering on scientific PDF documents** using Retrieval-Augmented Generation (RAG). It uses [GROBID](https://github.com/kermitt2/grobid) for structured text extraction, [ChromaDB](https://www.trychroma.com/) for vector storage, and any OpenAI-compatible LLM for answering.
 
