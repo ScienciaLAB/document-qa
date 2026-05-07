@@ -44,6 +44,8 @@ Additionally, this frontend provides the visualisation of named entities on LLM 
 
 ## Documentation
 
+ **For full technical documentation** of the `document-qa-engine` library **[`docs/README.md`](docs/README.md)**.
+
 ### Embedding selection
 In the latest version, there is the possibility to select both embedding functions and LLMs. There are some limitations, OpenAI embeddings cannot be used with open source models, and vice-versa. 
 
@@ -93,7 +95,7 @@ To release a new version:
 
 To use docker: 
 
-- docker run `lfoppiano/document-insights-qa:{latest_version)`
+- docker run `lfoppiano/document-insights-qa:{latest_version}`
 
 - docker run `lfoppiano/document-insights-qa:latest-develop` for the latest development version 
 

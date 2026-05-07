@@ -1,3 +1,12 @@
+"""LangChain vector store extensions for document-qa.
+
+Extends ChromaDB with support for returning similarity scores **and**
+raw embedding vectors alongside retrieved documents.  This enables
+the Streamlit frontend to compute relevance gradients and the
+``question_coefficient`` analysis mode.
+
+"""
+
 from typing import Any, Optional, List, Dict, Tuple, ClassVar, Collection
 
 from langchain.schema import Document
@@ -8,6 +17,14 @@ from langchain_core.vectorstores import VectorStore, VectorStoreRetriever
 
 
 class AdvancedVectorStoreRetriever(VectorStoreRetriever):
+    """Retriever that can enrich documents with similarity scores and embeddings.
+
+    Extends LangChain's ``VectorStoreRetriever`` with a
+    ``"similarity_with_embeddings"`` search type.  When used, each
+    returned document's ``metadata`` dict gains ``__similarity`` (float)
+    and ``__embeddings`` (list[float]) keys.
+    """
+
     allowed_search_types: ClassVar[Collection[str]] = (
         "similarity",
         "similarity_score_threshold",
@@ -18,6 +35,20 @@ class AdvancedVectorStoreRetriever(VectorStoreRetriever):
     def _get_relevant_documents(
             self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> List[Document]:
+        """Fetch relevant documents for the configured search type.
+
+        Supports all standard search types plus
+        ``"similarity_with_embeddings"`` which attaches score and
+        embedding vector metadata to each document.
+
+        Args:
+            query: The search query string.
+            run_manager: LangChain callback manager.
+
+        Returns:
+            list[Document]: Retrieved documents, optionally enriched
+            with similarity scores and embeddings.
+        """
 
         if self.search_type == "similarity_with_embeddings":
             docs_scores_and_embeddings = (
@@ -51,13 +82,29 @@ class AdvancedVectorStoreRetriever(VectorStoreRetriever):
 
 
 class AdvancedVectorStore(VectorStore):
+    """
+    Extension of LangChain's VectorStore that returns a custom retriever
+    supporting advanced search features.
+    """
+
     def as_retriever(self, **kwargs: Any) -> AdvancedVectorStoreRetriever:
+        """Create a retriever supporting ``similarity_with_embeddings``.
+
+        Accepts the same keyword arguments as the base ``as_retriever``.
+        """
         tags = kwargs.pop("tags", None) or []
         tags.extend(self._get_retriever_tags())
         return AdvancedVectorStoreRetriever(vectorstore=self, **kwargs, tags=tags)
 
 
 class ChromaAdvancedRetrieval(Chroma, AdvancedVectorStore):
+    """Chroma vector store with support for embeddings + similarity scores.
+
+    Extends the standard LangChain ``Chroma`` store with
+    `advanced_similarity_search` which returns ``(Document, score,
+    embedding)`` triples.
+    """
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -94,7 +141,18 @@ class ChromaAdvancedRetrieval(Chroma, AdvancedVectorStore):
             k: int = DEFAULT_K,
             filter: Optional[Dict[str, str]] = None,
             **kwargs: Any,
-    ) -> [List[Document], float, List[float]]:
+    ) -> List[Tuple[Document, float, List[float]]]:
+        """Return documents, similarity scores, and embeddings for *query*.
+
+        Args:
+            query: The search query.
+            k: Number of results to return.
+            filter: Optional Chroma metadata filter.
+
+        Returns:
+            list[tuple[Document, float, list[float]]]: Triples of
+            (document, distance, embedding_vector).
+        """
         docs_scores_and_embeddings = self.similarity_search_with_scores_and_embeddings(query, k, filter=filter)
         return docs_scores_and_embeddings
 
@@ -106,6 +164,21 @@ class ChromaAdvancedRetrieval(Chroma, AdvancedVectorStore):
             where_document: Optional[Dict[str, str]] = None,
             **kwargs: Any,
     ) -> List[Tuple[Document, float, List[float]]]:
+        """Low-level search returning docs with scores and embeddings.
+
+        Queries the Chroma collection requesting ``distances`` and
+        ``embeddings`` in addition to the usual documents and metadata.
+
+        Args:
+            query: The search query.
+            k: Number of results.
+            filter: Optional metadata filter.
+            where_document: Optional document-content filter.
+
+        Returns:
+            list[tuple[Document, float, list[float]]]: Triples of
+            (document, distance, embedding_vector).
+        """
 
         if self._embedding_function is None:
             results = self.__query_collection(
@@ -129,6 +202,15 @@ class ChromaAdvancedRetrieval(Chroma, AdvancedVectorStore):
 
 
 def _results_to_docs_scores_and_embeddings(results: Any) -> List[Tuple[Document, float, List[float]]]:
+    """Unpack raw Chroma query results into ``(Document, score, embedding)`` tuples.
+
+    Args:
+        results: Dict returned by ``Collection.query()`` with
+            ``include=['documents', 'metadatas', 'distances', 'embeddings']``.
+
+    Returns:
+        list[tuple[Document, float, list[float]]]: One tuple per result.
+    """
     return [
         (Document(page_content=result[0], metadata=result[1] or {}), result[2], result[3])
         for result in zip(
