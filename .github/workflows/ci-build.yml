@@ -1,6 +1,11 @@
 name: Build unstable
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
 
 concurrency: 
   group: unstable
@@ -26,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --upgrade flake8 pytest pycodestyle pytest-cov
+          pip install --upgrade flake8 pytest pycodestyle pytest-cov huggingface_hub
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Lint with flake8
         run: |
@@ -60,28 +65,48 @@ jobs:
         run: echo ${{ steps.docker_build.outputs.digest }}  
   hf-space-deploy:
     needs: [docker-build]
-    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     
     steps:
-      - name: Deploy to HuggingFace Space
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install deployment dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade huggingface_hub
+          
+      - name: Deploy to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://huggingface.co/spaces/sciencialab/document-qa-dev/restart?factory=true" \
-            -H "Authorization: Bearer $HF_TOKEN")
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | head -n -1)
-          
-          echo "HTTP Status: $http_code"
-          echo "Response: $body"
-          
-          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "## HuggingFace Space Deployment" >> $GITHUB_STEP_SUMMARY
-            echo "Successfully deployed to [document-qa-dev](https://huggingface.co/spaces/sciencialab/document-qa-dev)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo " Deployment failed (HTTP $http_code): $body"
-            exit 1
-          fi
-        
+          python - << 'PYEOF'
+          import os
+          from huggingface_hub import HfApi
+
+          token = os.environ["HF_TOKEN"]
+          space_id = os.environ["HF_SPACE_ID"]
+
+          api = HfApi(token=token)
+          api.upload_folder(
+              folder_path=".",             
+              repo_id=space_id,
+              repo_type="space",
+              ignore_patterns=[           
+                  ".git/*",
+                  ".github/*", 
+                  "tests/*",
+                  "__pycache__/*",
+                  "*.pyc",
+              ]
+          )
+          print(f"Deployed to https://huggingface.co/spaces/{space_id}")
+          PYEOF
