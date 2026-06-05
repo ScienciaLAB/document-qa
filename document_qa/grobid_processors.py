@@ -144,7 +144,7 @@ class GrobidProcessor(BaseProcessor):
             batch_size=5,
             coordinates=["p", "title", "persName"],
             sleep_time=5,
-            timeout=180,
+            timeout=60,
             check_server=ping_server
         )
         self.grobid_client = grobid_client
