@@ -168,7 +168,13 @@ def init_qa(model_name, embeddings_name):
     )
 
     storage = DataStorage(embeddings)
-    return DocumentQAEngine(chat, storage, grobid_url=os.environ['GROBID_URL'], memory=st.session_state['memory'])
+    return DocumentQAEngine(
+        chat,
+        storage,
+        grobid_url=os.environ['GROBID_URL'],
+        memory=st.session_state['memory'],
+        ping_grobid_server=False
+    )
 
 
 @st.cache_resource
@@ -368,7 +374,7 @@ if uploaded_file and not st.session_state.loaded_embeddings:
                         tmp_path = tmp_file.name
                     st.session_state['binary'] = binary
 
-                    st.session_state['doc_id'] = hash = st.session_state['rqa'][model].create_memory_embeddings(
+                    st.session_state['doc_id'] = st.session_state['rqa'][model].create_memory_embeddings(
                         tmp_path,
                         chunk_size=chunk_size,
                         perc_overlap=0.1
@@ -379,12 +385,13 @@ if uploaded_file and not st.session_state.loaded_embeddings:
                 st.session_state['loaded_embeddings'] = True
                 st.session_state.messages = []
         except GrobidServiceError as exc:
-            message = str(exc).strip() or "Grobid is not responding"
-            status = f" (status {exc.status_code})" if exc.status_code else ""
             st.session_state['doc_id'] = None
             st.session_state['loaded_embeddings'] = False
             st.session_state['uploaded'] = False
-            st.error(f"{message}{status} Please try later.")
+            message = str(exc).strip() or "Grobid is not responding."
+            if not message.endswith((".", "!", "?")):
+                message += "."
+            st.error(f"{message} Please try again later.")
             st.stop()
 
 

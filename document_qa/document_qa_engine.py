@@ -7,7 +7,7 @@ Generation (RAG) pipeline over scientific PDFs.
 import copy
 import os
 from pathlib import Path
-from typing import Union, Any, List, Tuple
+from typing import Union, Any, List
 
 import tiktoken
 from langchain.chains import create_extraction_chain
@@ -21,7 +21,7 @@ from langchain_community.vectorstores.chroma import Chroma
 from langchain_core.vectorstores import VectorStore
 from tqdm import tqdm
 
-from document_qa.grobid_processors import GrobidProcessor, GrobidServiceError
+from document_qa.grobid_processors import GrobidProcessor
 from document_qa.langchain import ChromaAdvancedRetrieval
 
 
@@ -298,7 +298,7 @@ class DocumentQAEngine:
                  data_storage: DataStorage,
                  grobid_url=None,
                  memory=None,
-                 ping_grobid_server: bool = False
+                 ping_grobid_server: bool = True
                  ):
 
         self.llm = llm
@@ -318,7 +318,7 @@ class DocumentQAEngine:
             context_size=4,
             extraction_schema=None,
             verbose=False
-    ) -> tuple[Any, str]:
+    ) -> tuple[Any, str, list]:
         """Ask a question and get an LLM-generated answer.
 
         Retrieves the most relevant chunks from the vector store, feeds
@@ -355,7 +355,7 @@ class DocumentQAEngine:
 
         if output_parser:
             try:
-                return self._parse_json(response, output_parser), response
+                return self._parse_json(response, output_parser), response, coordinates
             except Exception as oe:
                 print("Failing to parse the response", oe)
                 return None, response, coordinates
@@ -370,7 +370,7 @@ class DocumentQAEngine:
         else:
             return None, response, coordinates
 
-    def query_storage(self, query: str, doc_id, context_size=4) -> tuple[List[Document], list]:
+    def query_storage(self, query: str, doc_id, context_size=4) -> tuple[List[str], list]:
         """Retrieve relevant text passages without calling the LLM.
 
         Useful for debugging which chunks would be used as context, or for
@@ -481,7 +481,7 @@ class DocumentQAEngine:
 
         return parsed_output
 
-    def _run_query(self, doc_id, query, context_size=4) -> tuple[List[Document], list]:
+    def _run_query(self, doc_id, query, context_size=4) -> tuple[Any, list]:
         relevant_documents, relevant_document_coordinates = self._get_context(doc_id, query, context_size)
         response = self.chain.invoke({"context": relevant_documents, "question": query})
         return response, relevant_document_coordinates
@@ -546,14 +546,12 @@ class DocumentQAEngine:
         filename = Path(pdf_file_path).stem
         coordinates = True  # if chunk_size == -1 else False
         structure = self.grobid_processor.process_structure(pdf_file_path, coordinates=coordinates)
-        if not structure:
-            raise GrobidServiceError("Grobid did not return a response.")
 
         biblio = structure['biblio']
         biblio['filename'] = filename.replace(" ", "_")
 
         if verbose:
-            print("Generating embeddings for:", hash, ", filename: ", filename)
+            print("Generating embeddings for filename: ", filename)
 
         texts = []
         metadatas = []

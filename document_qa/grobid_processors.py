@@ -20,6 +20,7 @@ from pathlib import Path
 
 import dateparser
 import grobid_tei_xml
+import requests
 from bs4 import BeautifulSoup
 from grobid_client.grobid_client import GrobidClient
 
@@ -186,7 +187,10 @@ class GrobidProcessor(BaseProcessor):
                                                                     include_raw_citations=False,
                                                                     include_raw_affiliations=False,
                                                                     generateIDs=True)
-        except Exception as exc:
+        except requests.exceptions.RequestException as exc:
+            # Transport-level failure (connection refused, timeout, …).
+            # Local/usage errors (bad path, parsing bugs) are intentionally
+            # not caught here so they surface with their real traceback.
             raise GrobidServiceError("Grobid service did not respond.") from exc
 
         if status != 200:
@@ -195,8 +199,34 @@ class GrobidProcessor(BaseProcessor):
                 status_code=status
             )
 
-        document_object = self.parse_grobid_xml(text, coordinates=coordinates)
+        # Grobid can answer 200 with an empty body (e.g. it gave up on the PDF).
+        if not text or not text.strip():
+            raise GrobidServiceError(
+                "Grobid returned an empty response.",
+                status_code=status
+            )
+
+        # A truncated/corrupted TEI payload makes the XML parser blow up; map
+        # that to a clear service error instead of an opaque parsing traceback.
+        try:
+            document_object = self.parse_grobid_xml(text, coordinates=coordinates)
+        except GrobidServiceError:
+            raise
+        except Exception as exc:
+            raise GrobidServiceError(
+                "Grobid returned a malformed or truncated response.",
+                status_code=status
+            ) from exc
+
         document_object['filename'] = Path(pdf_file).stem.replace(".tei", "")
+
+        # Well-formed XML can still carry no usable text (e.g. an image-only or
+        # truncated PDF). Nothing to embed downstream, so fail loudly here.
+        if not any(passage.get('text', '').strip() for passage in document_object.get('passages', [])):
+            raise GrobidServiceError(
+                "Grobid returned a document with no extractable text.",
+                status_code=status
+            )
 
         return document_object
 
