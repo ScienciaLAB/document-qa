@@ -47,28 +47,24 @@ class ModalEmbeddings(Embeddings):
         # Newlines degrade embedding quality for most models
         cleaned_text = [t.replace("\n", " ") for t in text]
 
-        headers = {
-            "Content-Type": "application/json"
-        }
+        payload = {'text': "\n".join(cleaned_text)}
 
+        headers = {}
         if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers = {'x-api-key': self.api_key}
 
         response = requests.post(
-            f"{self.url}/embeddings",
-            json={
-                "model": self.model_name,
-                "input": cleaned_text
-            },
+            self.url,
+            data=payload,
+            files=[],
             headers=headers
         )
-
         response.raise_for_status()
 
-        data = response.json()["data"]
-        return [item["embedding"] for item in data]
+        # print(response.text)
+        return response.json()
 
-    def embed_documents(self, text: List[str]) -> List[List[float]]:
+    def embed_documents(self, text: List[str]) -> List[List[str]]:
         """Embed multiple documents (LangChain interface).
 
         Args:
@@ -79,7 +75,7 @@ class ModalEmbeddings(Embeddings):
         """
         return self.embed(text)
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> List[List[str]]:
         """Embed a single query string (LangChain interface).
 
         Args:
