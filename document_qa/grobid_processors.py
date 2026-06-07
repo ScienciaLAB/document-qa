@@ -20,8 +20,17 @@ from pathlib import Path
 
 import dateparser
 import grobid_tei_xml
+import requests
 from bs4 import BeautifulSoup
 from grobid_client.grobid_client import GrobidClient
+
+
+class GrobidServiceError(RuntimeError):
+    """Raised when the Grobid service fails to process a document."""
+
+    def __init__(self, message="Grobid service error", status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def get_span_start(type, title=None):
@@ -168,21 +177,60 @@ class GrobidProcessor(BaseProcessor):
 
             Returns ``None`` if GROBID returns a non-200 status.
         """
-        pdf_file, status, text = self.grobid_client.process_pdf("processFulltextDocument",
-                                                                input_path,
-                                                                consolidate_header=True,
-                                                                consolidate_citations=False,
-                                                                segment_sentences=False,
-                                                                tei_coordinates=coordinates,
-                                                                include_raw_citations=False,
-                                                                include_raw_affiliations=False,
-                                                                generateIDs=True)
+        try:
+            pdf_file, status, text = self.grobid_client.process_pdf("processFulltextDocument",
+                                                                    input_path,
+                                                                    consolidate_header=True,
+                                                                    consolidate_citations=False,
+                                                                    segment_sentences=False,
+                                                                    tei_coordinates=coordinates,
+                                                                    include_raw_citations=False,
+                                                                    include_raw_affiliations=False,
+                                                                    generateIDs=True)
+        except requests.exceptions.RequestException as exc:
+            # Transport-level failure (connection refused, timeout, …).
+            # Local/usage errors (bad path, parsing bugs) are intentionally
+            # not caught here so they surface with their real traceback.
+            raise GrobidServiceError("Grobid service did not respond.") from exc
 
         if status != 200:
-            return
+            # Grobid attaches a human-readable reason to error responses
+            # (e.g. a 500 body explaining what went wrong). Surface it
+            # alongside the status code instead of discarding it.
+            reason = text.strip() if text else ""
+            message = f"Grobid service returned status {status}."
+            if reason:
+                message += f" {reason}"
+            raise GrobidServiceError(message, status_code=status)
 
-        document_object = self.parse_grobid_xml(text, coordinates=coordinates)
+        # Grobid can answer 200 with an empty body (e.g. it gave up on the PDF).
+        if not text or not text.strip():
+            raise GrobidServiceError(
+                "Grobid returned an empty response.",
+                status_code=status
+            )
+
+        # A truncated/corrupted TEI payload makes the XML parser blow up; map
+        # that to a clear service error instead of an opaque parsing traceback.
+        try:
+            document_object = self.parse_grobid_xml(text, coordinates=coordinates)
+        except GrobidServiceError:
+            raise
+        except Exception as exc:
+            raise GrobidServiceError(
+                "Grobid returned a malformed or truncated response.",
+                status_code=status
+            ) from exc
+
         document_object['filename'] = Path(pdf_file).stem.replace(".tei", "")
+
+        # Well-formed XML can still carry no usable text (e.g. an image-only or
+        # truncated PDF). Nothing to embed downstream, so fail loudly here.
+        if not any(passage.get('text', '').strip() for passage in document_object.get('passages', [])):
+            raise GrobidServiceError(
+                "Grobid returned a document with no extractable text.",
+                status_code=status
+            )
 
         return document_object
 
@@ -221,7 +269,7 @@ class GrobidProcessor(BaseProcessor):
         try:
             year = dateparser.parse(doc_biblio.header.date).year
             biblio["publication_year"] = year
-        except:
+        except Exception:
             pass
 
         output_data['biblio'] = biblio

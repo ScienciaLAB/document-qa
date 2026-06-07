@@ -34,7 +34,7 @@ class TextMerger:
 
     Args:
         model_name: A tiktoken model name (e.g. ``"gpt-4"``).  When given,
-            the tokenizer for that model is used.  
+            the tokenizer for that model is used.
         encoding_name: A tiktoken encoding name (default ``"gpt2"``).
             Ignored when *model_name* is provided.
     """
@@ -174,7 +174,7 @@ class DataStorage:
 
     Args:
         embedding_function: A LangChain-compatible ``Embeddings`` instance
-        root_path: Optional directory for persisted embeddings. 
+        root_path: Optional directory for persisted embeddings.
         engine: The vector-store class to use.
 
     """
@@ -278,7 +278,7 @@ class DocumentQAEngine:
     Args:
         llm: A LangChain chat model (e.g. ``ChatOpenAI``).
         data_storage: A `DataStorage` instance for managing embeddings.
-        grobid_url: URL of the GROBID server. 
+        grobid_url: URL of the GROBID server.
         memory: Optional ``ConversationBufferMemory`` for multi-turn context.
 
     """
@@ -297,7 +297,8 @@ class DocumentQAEngine:
                  llm,
                  data_storage: DataStorage,
                  grobid_url=None,
-                 memory=None
+                 memory=None,
+                 ping_grobid_server: bool = True
                  ):
 
         self.llm = llm
@@ -307,7 +308,7 @@ class DocumentQAEngine:
         self.data_storage = data_storage
 
         if grobid_url:
-            self.grobid_processor = GrobidProcessor(grobid_url)
+            self.grobid_processor = GrobidProcessor(grobid_url, ping_server=ping_grobid_server)
 
     def query_document(
             self,
@@ -317,7 +318,7 @@ class DocumentQAEngine:
             context_size=4,
             extraction_schema=None,
             verbose=False
-    ) -> tuple[Any, str]:
+    ) -> tuple[Any, str, list]:
         """Ask a question and get an LLM-generated answer.
 
         Retrieves the most relevant chunks from the vector store, feeds
@@ -354,7 +355,7 @@ class DocumentQAEngine:
 
         if output_parser:
             try:
-                return self._parse_json(response, output_parser), response
+                return self._parse_json(response, output_parser), response, coordinates
             except Exception as oe:
                 print("Failing to parse the response", oe)
                 return None, response, coordinates
@@ -369,7 +370,7 @@ class DocumentQAEngine:
         else:
             return None, response, coordinates
 
-    def query_storage(self, query: str, doc_id, context_size=4) -> tuple[List[Document], list]:
+    def query_storage(self, query: str, doc_id, context_size=4) -> tuple[List[str], list]:
         """Retrieve relevant text passages without calling the LLM.
 
         Useful for debugging which chunks would be used as context, or for
@@ -480,7 +481,7 @@ class DocumentQAEngine:
 
         return parsed_output
 
-    def _run_query(self, doc_id, query, context_size=4) -> tuple[List[Document], list]:
+    def _run_query(self, doc_id, query, context_size=4) -> tuple[Any, list]:
         relevant_documents, relevant_document_coordinates = self._get_context(doc_id, query, context_size)
         response = self.chain.invoke({"context": relevant_documents, "question": query})
         return response, relevant_document_coordinates
@@ -550,7 +551,7 @@ class DocumentQAEngine:
         biblio['filename'] = filename.replace(" ", "_")
 
         if verbose:
-            print("Generating embeddings for:", hash, ", filename: ", filename)
+            print("Generating embeddings for filename: ", filename)
 
         texts = []
         metadatas = []

@@ -15,19 +15,18 @@ from hashlib import blake2b
 from tempfile import NamedTemporaryFile
 
 import dotenv
+import streamlit as st
 from grobid_quantities.quantities import QuantitiesAPI
 from langchain.memory import ConversationBufferMemory
 from langchain_openai import ChatOpenAI
 from streamlit_pdf_viewer import pdf_viewer
 
 from document_qa.custom_embeddings import ModalEmbeddings
+from document_qa.document_qa_engine import DocumentQAEngine, DataStorage
+from document_qa.grobid_processors import GrobidAggregationProcessor, decorate_text_with_annotations, GrobidServiceError
 from document_qa.ner_client_generic import NERClientGeneric
 
 dotenv.load_dotenv(override=True)
-
-import streamlit as st
-from document_qa.document_qa_engine import DocumentQAEngine, DataStorage
-from document_qa.grobid_processors import GrobidAggregationProcessor, decorate_text_with_annotations
 
 API_MODELS = {
     "microsoft/Phi-4-mini-instruct": os.environ["PHI_URL"],
@@ -169,7 +168,13 @@ def init_qa(model_name, embeddings_name):
     )
 
     storage = DataStorage(embeddings)
-    return DocumentQAEngine(chat, storage, grobid_url=os.environ['GROBID_URL'], memory=st.session_state['memory'])
+    return DocumentQAEngine(
+        chat,
+        storage,
+        grobid_url=os.environ['GROBID_URL'],
+        memory=st.session_state['memory'],
+        ping_grobid_server=False
+    )
 
 
 @st.cache_resource
@@ -358,19 +363,36 @@ if uploaded_file and not st.session_state.loaded_embeddings:
         st.stop()
 
     with left_column:
-        with st.spinner('Reading file, calling Grobid, and creating in-memory embeddings...'):
-            binary = uploaded_file.getvalue()
-            tmp_file = NamedTemporaryFile()
-            tmp_file.write(bytearray(binary))
-            st.session_state['binary'] = binary
+        try:
+            with st.spinner('Reading file, calling Grobid, and creating in-memory embeddings...'):
+                binary = uploaded_file.getvalue()
+                tmp_path = None
+                try:
+                    with NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+                        tmp_file.write(bytearray(binary))
+                        tmp_file.flush()
+                        tmp_path = tmp_file.name
+                    st.session_state['binary'] = binary
 
-            st.session_state['doc_id'] = hash = st.session_state['rqa'][model].create_memory_embeddings(
-                tmp_file.name,
-                chunk_size=chunk_size,
-                perc_overlap=0.1
-            )
-            st.session_state['loaded_embeddings'] = True
-            st.session_state.messages = []
+                    st.session_state['doc_id'] = st.session_state['rqa'][model].create_memory_embeddings(
+                        tmp_path,
+                        chunk_size=chunk_size,
+                        perc_overlap=0.1
+                    )
+                finally:
+                    if tmp_path and os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                st.session_state['loaded_embeddings'] = True
+                st.session_state.messages = []
+        except GrobidServiceError as exc:
+            st.session_state['doc_id'] = None
+            st.session_state['loaded_embeddings'] = False
+            st.session_state['uploaded'] = False
+            message = str(exc).strip() or "Grobid is not responding."
+            if not message.endswith((".", "!", "?")):
+                message += "."
+            st.error(f"{message} Please try again later.")
+            st.stop()
 
 
 def rgb_to_hex(rgb):
