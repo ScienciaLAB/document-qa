@@ -36,11 +36,11 @@ class GrobidServiceError(RuntimeError):
 def get_span_start(type, title=None):
     """Return an opening ``<span>`` tag for an annotation of the given *type*."""
     title_ = ' title="' + title + '"' if title is not None else ""
-    return '<span class="label ' + type + '"' + title_ + '>'
+    return '<span class="label ' + type + '"' + title_ + ">"
 
 
 def get_span_end():
-    return '</span>'
+    return "</span>"
 
 
 def get_rs_start(type):
@@ -48,11 +48,11 @@ def get_rs_start(type):
 
 
 def get_rs_end():
-    return '</rs>'
+    return "</rs>"
 
 
 def has_space_between_value_and_unit(quantity):
-    return quantity['offsetEnd'] < quantity['rawUnit']['offsetStart']
+    return quantity["offsetEnd"] < quantity["rawUnit"]["offsetStart"]
 
 
 def decorate_text_with_annotations(text, spans, tag="span"):
@@ -70,27 +70,27 @@ def decorate_text_with_annotations(text, spans, tag="span"):
     Returns:
         str: The text with inline annotation markup.
     """
-    sorted_spans = list(sorted(spans, key=lambda item: item['offset_start']))
+    sorted_spans = list(sorted(spans, key=lambda item: item["offset_start"]))
     annotated_text = ""
     start = 0
     for span in sorted_spans:
-        type = span['type'].replace("<", "").replace(">", "")
-        if 'unit_type' in span and span['unit_type'] is not None:
-            type = span['unit_type'].replace(" ", "_")
-        annotated_text += escape(text[start: span['offset_start']])
-        title = span['quantified'] if 'quantified' in span else None
+        type = span["type"].replace("<", "").replace(">", "")
+        if "unit_type" in span and span["unit_type"] is not None:
+            type = span["unit_type"].replace(" ", "_")
+        annotated_text += escape(text[start : span["offset_start"]])
+        title = span["quantified"] if "quantified" in span else None
         annotated_text += get_span_start(type, title) if tag == "span" else get_rs_start(type)
-        annotated_text += escape(text[span['offset_start']: span['offset_end']])
+        annotated_text += escape(text[span["offset_start"] : span["offset_end"]])
         annotated_text += get_span_end() if tag == "span" else get_rs_end()
 
-        start = span['offset_end']
-    annotated_text += escape(text[start: len(text)])
+        start = span["offset_end"]
+    annotated_text += escape(text[start : len(text)])
     return annotated_text
 
 
 def get_parsed_value_type(quantity):
-    if 'parsedValue' in quantity and 'structure' in quantity['parsedValue']:
-        return quantity['parsedValue']['structure']['type']
+    if "parsedValue" in quantity and "structure" in quantity["parsedValue"]:
+        return quantity["parsedValue"]["structure"]["type"]
 
 
 class BaseProcessor(object):
@@ -101,9 +101,7 @@ class BaseProcessor(object):
     inherit :meth:`post_process` from here.
     """
 
-    patterns = [
-        r'\d+e\d+'
-    ]
+    patterns = [r"\d+e\d+"]
 
     def post_process(self, text):
         """Clean encoding artefacts and normalise special characters.
@@ -114,16 +112,16 @@ class BaseProcessor(object):
         Returns:
             str: Cleaned text.
         """
-        output = text.replace('À', '-')
-        output = output.replace('¼', '=')
-        output = output.replace('þ', '+')
-        output = output.replace('Â', 'x')
-        output = output.replace('$', '~')
-        output = output.replace('−', '-')
-        output = output.replace('–', '-')
+        output = text.replace("À", "-")
+        output = output.replace("¼", "=")
+        output = output.replace("þ", "+")
+        output = output.replace("Â", "x")
+        output = output.replace("$", "~")
+        output = output.replace("−", "-")
+        output = output.replace("–", "-")
 
         for pattern in self.patterns:
-            output = re.sub(pattern, lambda match: match.group().replace('e', '-'), output)
+            output = re.sub(pattern, lambda match: match.group().replace("e", "-"), output)
 
         return output
 
@@ -154,7 +152,7 @@ class GrobidProcessor(BaseProcessor):
             coordinates=["p", "title", "persName"],
             sleep_time=5,
             timeout=60,
-            check_server=ping_server
+            check_server=ping_server,
         )
         self.grobid_client = grobid_client
 
@@ -178,15 +176,17 @@ class GrobidProcessor(BaseProcessor):
             Returns ``None`` if GROBID returns a non-200 status.
         """
         try:
-            pdf_file, status, text = self.grobid_client.process_pdf("processFulltextDocument",
-                                                                    input_path,
-                                                                    consolidate_header=True,
-                                                                    consolidate_citations=False,
-                                                                    segment_sentences=False,
-                                                                    tei_coordinates=coordinates,
-                                                                    include_raw_citations=False,
-                                                                    include_raw_affiliations=False,
-                                                                    generateIDs=True)
+            pdf_file, status, text = self.grobid_client.process_pdf(
+                "processFulltextDocument",
+                input_path,
+                consolidate_header=True,
+                consolidate_citations=False,
+                segment_sentences=False,
+                tei_coordinates=coordinates,
+                include_raw_citations=False,
+                include_raw_affiliations=False,
+                generateIDs=True,
+            )
         except requests.exceptions.RequestException as exc:
             # Transport-level failure (connection refused, timeout, …).
             # Local/usage errors (bad path, parsing bugs) are intentionally
@@ -205,10 +205,7 @@ class GrobidProcessor(BaseProcessor):
 
         # Grobid can answer 200 with an empty body (e.g. it gave up on the PDF).
         if not text or not text.strip():
-            raise GrobidServiceError(
-                "Grobid returned an empty response.",
-                status_code=status
-            )
+            raise GrobidServiceError("Grobid returned an empty response.", status_code=status)
 
         # A truncated/corrupted TEI payload makes the XML parser blow up; map
         # that to a clear service error instead of an opaque parsing traceback.
@@ -217,29 +214,23 @@ class GrobidProcessor(BaseProcessor):
         except GrobidServiceError:
             raise
         except Exception as exc:
-            raise GrobidServiceError(
-                "Grobid returned a malformed or truncated response.",
-                status_code=status
-            ) from exc
+            raise GrobidServiceError("Grobid returned a malformed or truncated response.", status_code=status) from exc
 
-        document_object['filename'] = Path(pdf_file).stem.replace(".tei", "")
+        document_object["filename"] = Path(pdf_file).stem.replace(".tei", "")
 
         # Well-formed XML can still carry no usable text (e.g. an image-only or
         # truncated PDF). Nothing to embed downstream, so fail loudly here.
-        if not any(passage.get('text', '').strip() for passage in document_object.get('passages', [])):
-            raise GrobidServiceError(
-                "Grobid returned a document with no extractable text.",
-                status_code=status
-            )
+        if not any(passage.get("text", "").strip() for passage in document_object.get("passages", [])):
+            raise GrobidServiceError("Grobid returned a document with no extractable text.", status_code=status)
 
         return document_object
 
     def process_single(self, input_file):
         doc = self.process_structure(input_file)
 
-        for paragraph in doc['passages']:
-            entities = self.process_single_text(paragraph['text'])
-            paragraph['spans'] = entities
+        for paragraph in doc["passages"]:
+            entities = self.process_single_text(paragraph["text"])
+            paragraph["spans"] = entities
 
         return doc
 
@@ -264,7 +255,7 @@ class GrobidProcessor(BaseProcessor):
             "doi": doc_biblio.header.doi if doc_biblio.header.doi is not None else "",
             "authors": ", ".join([author.full_name for author in doc_biblio.header.authors]),
             "title": doc_biblio.header.title,
-            "hash": doc_biblio.pdf_md5
+            "hash": doc_biblio.pdf_md5,
         }
         try:
             year = dateparser.parse(doc_biblio.header.date).year
@@ -272,12 +263,12 @@ class GrobidProcessor(BaseProcessor):
         except Exception:
             pass
 
-        output_data['biblio'] = biblio
+        output_data["biblio"] = biblio
         passages = []
-        output_data['passages'] = passages
+        output_data["passages"] = passages
         passage_type = "paragraph"
 
-        soup = BeautifulSoup(text, 'xml')
+        soup = BeautifulSoup(text, "xml")
         blocks_header = get_xml_nodes_header(soup, use_paragraphs=True)
 
         # passages.append({
@@ -290,99 +281,132 @@ class GrobidProcessor(BaseProcessor):
         #                              blocks_header['authors']])
         # })
 
-        passages.append({
-            "text": self.post_process(" ".join([node.text for node in blocks_header['title']])),
-            "type": passage_type,
-            "section": "<header>",
-            "subSection": "<title>",
-            "passage_id": "htitle",
-            "coordinates": ";".join([node['coords'] if coordinates and node.has_attr('coords') else "" for node in
-                                     blocks_header['title']])
-        })
+        passages.append(
+            {
+                "text": self.post_process(" ".join([node.text for node in blocks_header["title"]])),
+                "type": passage_type,
+                "section": "<header>",
+                "subSection": "<title>",
+                "passage_id": "htitle",
+                "coordinates": ";".join(
+                    [node["coords"] if coordinates and node.has_attr("coords") else "" for node in blocks_header["title"]]
+                ),
+            }
+        )
 
-        passages.append({
-            "text": self.post_process(
-                ''.join(node.text for node in blocks_header['abstract'] for text in node.find_all(text=True) if
-                        text.parent.name != "ref" or (
-                                text.parent.name == "ref" and text.parent.attrs[
-                            'type'] != 'bibr'))),
-            "type": passage_type,
-            "section": "<header>",
-            "subSection": "<abstract>",
-            "passage_id": "habstract",
-            "coordinates": ";".join([node['coords'] if coordinates and node.has_attr('coords') else "" for node in
-                                     blocks_header['abstract']])
-        })
+        passages.append(
+            {
+                "text": self.post_process(
+                    "".join(
+                        node.text
+                        for node in blocks_header["abstract"]
+                        for text in node.find_all(text=True)
+                        if text.parent.name != "ref" or (text.parent.name == "ref" and text.parent.attrs["type"] != "bibr")
+                    )
+                ),
+                "type": passage_type,
+                "section": "<header>",
+                "subSection": "<abstract>",
+                "passage_id": "habstract",
+                "coordinates": ";".join(
+                    [node["coords"] if coordinates and node.has_attr("coords") else "" for node in blocks_header["abstract"]]
+                ),
+            }
+        )
 
         text_blocks_body = get_xml_nodes_body(soup, verbose=False, use_paragraphs=True)
         text_blocks_body.extend(get_xml_nodes_back(soup, verbose=False, use_paragraphs=True))
 
         use_paragraphs = True
         if not use_paragraphs:
-            passages.extend([
-                {
-                    "text": self.post_process(''.join(text for text in sentence.find_all(text=True) if
-                                                      text.parent.name != "ref" or (
-                                                              text.parent.name == "ref" and text.parent.attrs[
-                                                          'type'] != 'bibr'))),
-                    "type": passage_type,
-                    "section": "<body>",
-                    "subSection": "<paragraph>",
-                    "passage_id": str(paragraph_id),
-                    "coordinates": paragraph['coords'] if coordinates and sentence.has_attr('coords') else ""
-                }
-                for paragraph_id, paragraph in enumerate(text_blocks_body) for
-                sentence_id, sentence in enumerate(paragraph)
-            ])
+            passages.extend(
+                [
+                    {
+                        "text": self.post_process(
+                            "".join(
+                                text
+                                for text in sentence.find_all(text=True)
+                                if text.parent.name != "ref"
+                                or (text.parent.name == "ref" and text.parent.attrs["type"] != "bibr")
+                            )
+                        ),
+                        "type": passage_type,
+                        "section": "<body>",
+                        "subSection": "<paragraph>",
+                        "passage_id": str(paragraph_id),
+                        "coordinates": paragraph["coords"] if coordinates and sentence.has_attr("coords") else "",
+                    }
+                    for paragraph_id, paragraph in enumerate(text_blocks_body)
+                    for sentence_id, sentence in enumerate(paragraph)
+                ]
+            )
         else:
-            passages.extend([
-                {
-                    "text": self.post_process(''.join(text for text in paragraph.find_all(text=True) if
-                                                      text.parent.name != "ref" or (
-                                                              text.parent.name == "ref" and text.parent.attrs[
-                                                          'type'] != 'bibr'))),
-                    "type": passage_type,
-                    "section": "<body>",
-                    "subSection": "<paragraph>",
-                    "passage_id": str(paragraph_id),
-                    "coordinates": paragraph['coords'] if coordinates and paragraph.has_attr('coords') else ""
-                }
-                for paragraph_id, paragraph in enumerate(text_blocks_body)
-            ])
+            passages.extend(
+                [
+                    {
+                        "text": self.post_process(
+                            "".join(
+                                text
+                                for text in paragraph.find_all(text=True)
+                                if text.parent.name != "ref"
+                                or (text.parent.name == "ref" and text.parent.attrs["type"] != "bibr")
+                            )
+                        ),
+                        "type": passage_type,
+                        "section": "<body>",
+                        "subSection": "<paragraph>",
+                        "passage_id": str(paragraph_id),
+                        "coordinates": paragraph["coords"] if coordinates and paragraph.has_attr("coords") else "",
+                    }
+                    for paragraph_id, paragraph in enumerate(text_blocks_body)
+                ]
+            )
 
         text_blocks_figures = get_xml_nodes_figures(soup, verbose=False)
 
         if not use_paragraphs:
-            passages.extend([
-                {
-                    "text": self.post_process(''.join(text for text in sentence.find_all(text=True) if
-                                                      text.parent.name != "ref" or (
-                                                              text.parent.name == "ref" and text.parent.attrs[
-                                                          'type'] != 'bibr'))),
-                    "type": passage_type,
-                    "section": "<body>",
-                    "subSection": "<figure>",
-                    "passage_id": str(paragraph_id) + str(sentence_id),
-                    "coordinates": sentence['coords'] if coordinates and 'coords' in sentence else ""
-                }
-                for paragraph_id, paragraph in enumerate(text_blocks_figures) for
-                sentence_id, sentence in enumerate(paragraph)
-            ])
+            passages.extend(
+                [
+                    {
+                        "text": self.post_process(
+                            "".join(
+                                text
+                                for text in sentence.find_all(text=True)
+                                if text.parent.name != "ref"
+                                or (text.parent.name == "ref" and text.parent.attrs["type"] != "bibr")
+                            )
+                        ),
+                        "type": passage_type,
+                        "section": "<body>",
+                        "subSection": "<figure>",
+                        "passage_id": str(paragraph_id) + str(sentence_id),
+                        "coordinates": sentence["coords"] if coordinates and "coords" in sentence else "",
+                    }
+                    for paragraph_id, paragraph in enumerate(text_blocks_figures)
+                    for sentence_id, sentence in enumerate(paragraph)
+                ]
+            )
         else:
-            passages.extend([
-                {
-                    "text": self.post_process(''.join(text for text in paragraph.find_all(text=True) if
-                                                      text.parent.name != "ref" or (
-                                                              text.parent.name == "ref" and text.parent.attrs[
-                                                          'type'] != 'bibr'))),
-                    "type": passage_type,
-                    "section": "<body>",
-                    "subSection": "<figure>",
-                    "passage_id": str(paragraph_id),
-                    "coordinates": paragraph['coords'] if coordinates and paragraph.has_attr('coords') else ""
-                }
-                for paragraph_id, paragraph in enumerate(text_blocks_figures)
-            ])
+            passages.extend(
+                [
+                    {
+                        "text": self.post_process(
+                            "".join(
+                                text
+                                for text in paragraph.find_all(text=True)
+                                if text.parent.name != "ref"
+                                or (text.parent.name == "ref" and text.parent.attrs["type"] != "bibr")
+                            )
+                        ),
+                        "type": passage_type,
+                        "section": "<body>",
+                        "subSection": "<figure>",
+                        "passage_id": str(paragraph_id),
+                        "coordinates": paragraph["coords"] if coordinates and paragraph.has_attr("coords") else "",
+                    }
+                    for paragraph_id, paragraph in enumerate(text_blocks_figures)
+                ]
+            )
 
         return output_data
 
@@ -418,26 +442,26 @@ class GrobidQuantitiesProcessor(BaseProcessor):
 
         spans = []
 
-        if 'measurements' in result:
+        if "measurements" in result:
             found_measurements = self.parse_measurements_output(result)
 
             for m in found_measurements:
                 item = {
-                    "text": text[m['offset_start']:m['offset_end']],
-                    'offset_start': m['offset_start'],
-                    'offset_end': m['offset_end']
+                    "text": text[m["offset_start"] : m["offset_end"]],
+                    "offset_start": m["offset_start"],
+                    "offset_end": m["offset_end"],
                 }
 
-                if 'raw' in m and m['raw'] != item['text']:
-                    item['text'] = m['raw']
+                if "raw" in m and m["raw"] != item["text"]:
+                    item["text"] = m["raw"]
 
-                if 'quantified_substance' in m:
-                    item['quantified'] = m['quantified_substance']
+                if "quantified_substance" in m:
+                    item["quantified"] = m["quantified_substance"]
 
-                if 'type' in m:
-                    item["unit_type"] = m['type']
+                if "type" in m:
+                    item["unit_type"] = m["type"]
 
-                item['type'] = 'property'
+                item["type"] = "property"
                 # if 'raw_value' in m:
                 #     item['raw_value'] = m['raw_value']
 
@@ -449,21 +473,21 @@ class GrobidQuantitiesProcessor(BaseProcessor):
     def parse_measurements_output(result):
         measurements_output = []
 
-        for measurement in result['measurements']:
-            type = measurement['type']
+        for measurement in result["measurements"]:
+            type = measurement["type"]
             measurement_output_object = {}
             quantity_type = None
             has_unit = False
             parsed_value_type = None
 
-            if 'quantified' in measurement:
-                if 'normalizedName' in measurement['quantified']:
-                    quantified_substance = measurement['quantified']['normalizedName']
+            if "quantified" in measurement:
+                if "normalizedName" in measurement["quantified"]:
+                    quantified_substance = measurement["quantified"]["normalizedName"]
                     measurement_output_object["quantified_substance"] = quantified_substance
 
-            if 'measurementOffsets' in measurement:
-                measurement_output_object["offset_start"] = measurement["measurementOffsets"]['start']
-                measurement_output_object["offset_end"] = measurement["measurementOffsets"]['end']
+            if "measurementOffsets" in measurement:
+                measurement_output_object["offset_start"] = measurement["measurementOffsets"]["start"]
+                measurement_output_object["offset_end"] = measurement["measurementOffsets"]["end"]
             else:
                 # If there are no offsets we skip the measurement
                 continue
@@ -471,66 +495,66 @@ class GrobidQuantitiesProcessor(BaseProcessor):
             # if 'measurementRaw' in measurement:
             #     measurement_output_object['raw_value'] = measurement['measurementRaw']
 
-            if type == 'value':
-                quantity = measurement['quantity']
+            if type == "value":
+                quantity = measurement["quantity"]
 
                 parsed_value = GrobidQuantitiesProcessor.get_parsed(quantity)
                 if parsed_value:
-                    measurement_output_object['parsed'] = parsed_value
+                    measurement_output_object["parsed"] = parsed_value
 
                 normalized_value = GrobidQuantitiesProcessor.get_normalized(quantity)
                 if normalized_value:
-                    measurement_output_object['normalized'] = normalized_value
+                    measurement_output_object["normalized"] = normalized_value
 
                 raw_value = GrobidQuantitiesProcessor.get_raw(quantity)
                 if raw_value:
-                    measurement_output_object['raw'] = raw_value
+                    measurement_output_object["raw"] = raw_value
 
-                if 'type' in quantity:
-                    quantity_type = quantity['type']
+                if "type" in quantity:
+                    quantity_type = quantity["type"]
 
-                if 'rawUnit' in quantity:
+                if "rawUnit" in quantity:
                     has_unit = True
 
                 parsed_value_type = get_parsed_value_type(quantity)
 
-            elif type == 'interval':
-                if 'quantityMost' in measurement:
-                    quantityMost = measurement['quantityMost']
-                    if 'type' in quantityMost:
-                        quantity_type = quantityMost['type']
+            elif type == "interval":
+                if "quantityMost" in measurement:
+                    quantityMost = measurement["quantityMost"]
+                    if "type" in quantityMost:
+                        quantity_type = quantityMost["type"]
 
-                    if 'rawUnit' in quantityMost:
+                    if "rawUnit" in quantityMost:
                         has_unit = True
 
                     parsed_value_type = get_parsed_value_type(quantityMost)
 
-                if 'quantityLeast' in measurement:
-                    quantityLeast = measurement['quantityLeast']
+                if "quantityLeast" in measurement:
+                    quantityLeast = measurement["quantityLeast"]
 
-                    if 'type' in quantityLeast:
-                        quantity_type = quantityLeast['type']
+                    if "type" in quantityLeast:
+                        quantity_type = quantityLeast["type"]
 
-                    if 'rawUnit' in quantityLeast:
+                    if "rawUnit" in quantityLeast:
                         has_unit = True
 
                     parsed_value_type = get_parsed_value_type(quantityLeast)
 
-            elif type == 'listc':
-                quantities = measurement['quantities']
+            elif type == "listc":
+                quantities = measurement["quantities"]
 
-                if 'type' in quantities[0]:
-                    quantity_type = quantities[0]['type']
+                if "type" in quantities[0]:
+                    quantity_type = quantities[0]["type"]
 
-                if 'rawUnit' in quantities[0]:
+                if "rawUnit" in quantities[0]:
                     has_unit = True
 
                 parsed_value_type = get_parsed_value_type(quantities[0])
 
             if quantity_type is not None or has_unit:
-                measurement_output_object['type'] = quantity_type
+                measurement_output_object["type"] = quantity_type
 
-            if parsed_value_type is None or parsed_value_type not in ['ALPHABETIC', 'TIME']:
+            if parsed_value_type is None or parsed_value_type not in ["ALPHABETIC", "TIME"]:
                 measurements_output.append(measurement_output_object)
 
         return measurements_output
@@ -538,10 +562,10 @@ class GrobidQuantitiesProcessor(BaseProcessor):
     @staticmethod
     def get_parsed(quantity):
         parsed_value = parsed_unit = None
-        if 'parsedValue' in quantity and 'parsed' in quantity['parsedValue']:
-            parsed_value = quantity['parsedValue']['parsed']
-        if 'parsedUnit' in quantity and 'name' in quantity['parsedUnit']:
-            parsed_unit = quantity['parsedUnit']['name']
+        if "parsedValue" in quantity and "parsed" in quantity["parsedValue"]:
+            parsed_value = quantity["parsedValue"]["parsed"]
+        if "parsedUnit" in quantity and "name" in quantity["parsedUnit"]:
+            parsed_unit = quantity["parsedUnit"]["name"]
 
         if parsed_value and parsed_unit:
             if has_space_between_value_and_unit(quantity):
@@ -552,10 +576,10 @@ class GrobidQuantitiesProcessor(BaseProcessor):
     @staticmethod
     def get_normalized(quantity):
         normalized_value = normalized_unit = None
-        if 'normalizedQuantity' in quantity:
-            normalized_value = quantity['normalizedQuantity']
-        if 'normalizedUnit' in quantity and 'name' in quantity['normalizedUnit']:
-            normalized_unit = quantity['normalizedUnit']['name']
+        if "normalizedQuantity" in quantity:
+            normalized_value = quantity["normalizedQuantity"]
+        if "normalizedUnit" in quantity and "name" in quantity["normalizedUnit"]:
+            normalized_unit = quantity["normalizedUnit"]["name"]
 
         if normalized_value and normalized_unit:
             if has_space_between_value_and_unit(quantity):
@@ -566,10 +590,10 @@ class GrobidQuantitiesProcessor(BaseProcessor):
     @staticmethod
     def get_raw(quantity):
         raw_value = raw_unit = None
-        if 'rawValue' in quantity:
-            raw_value = quantity['rawValue']
-        if 'rawUnit' in quantity and 'name' in quantity['rawUnit']:
-            raw_unit = quantity['rawUnit']['name']
+        if "rawValue" in quantity:
+            raw_value = quantity["rawValue"]
+        if "rawUnit" in quantity and "name" in quantity["rawUnit"]:
+            raw_unit = quantity["rawUnit"]["name"]
 
         if raw_value and raw_unit:
             if has_space_between_value_and_unit(quantity):
@@ -603,28 +627,27 @@ class GrobidMaterialsProcessor(BaseProcessor):
             ``type`` (``"material"``), and optional ``formula`` keys.
         """
         preprocessed_text = text.strip()
-        status, result = self.grobid_superconductors_client.process_text(preprocessed_text,
-                                                                         "processText_disable_linking")
+        status, result = self.grobid_superconductors_client.process_text(preprocessed_text, "processText_disable_linking")
 
         if status != 200:
             result = {}
 
         spans = []
 
-        if 'passages' in result:
+        if "passages" in result:
             materials = self.parse_superconductors_output(result, preprocessed_text)
 
             for m in materials:
-                item = {"text": preprocessed_text[m['offset_start']:m['offset_end']]}
+                item = {"text": preprocessed_text[m["offset_start"] : m["offset_end"]]}
 
-                item['offset_start'] = m['offset_start']
-                item['offset_end'] = m['offset_end']
+                item["offset_start"] = m["offset_start"]
+                item["offset_end"] = m["offset_end"]
 
-                if 'formula' in m:
-                    item["formula"] = m['formula']
+                if "formula" in m:
+                    item["formula"] = m["formula"]
 
-                item['type'] = 'material'
-                item['raw_value'] = m['text']
+                item["type"] = "material"
+                item["raw_value"] = m["text"]
 
                 spans.append(item)
 
@@ -640,13 +663,13 @@ class GrobidMaterialsProcessor(BaseProcessor):
         for position_material in result:
             compositions = []
             for material in position_material:
-                if 'resolvedFormulas' in material:
-                    for resolved_formula in material['resolvedFormulas']:
-                        if 'formulaComposition' in resolved_formula:
-                            compositions.append(resolved_formula['formulaComposition'])
-                elif 'formula' in material:
-                    if 'formulaComposition' in material['formula']:
-                        compositions.append(material['formula']['formulaComposition'])
+                if "resolvedFormulas" in material:
+                    for resolved_formula in material["resolvedFormulas"]:
+                        if "formulaComposition" in resolved_formula:
+                            compositions.append(resolved_formula["formulaComposition"])
+                elif "formula" in material:
+                    if "formulaComposition" in material["formula"]:
+                        compositions.append(material["formula"]["formulaComposition"])
             results.append(compositions)
 
         return results
@@ -664,32 +687,32 @@ class GrobidMaterialsProcessor(BaseProcessor):
     def output_info(self, result):
         compositions = []
         for material in result:
-            if 'resolvedFormulas' in material:
-                for resolved_formula in material['resolvedFormulas']:
-                    if 'formulaComposition' in resolved_formula:
-                        compositions.append(resolved_formula['formulaComposition'])
-            elif 'formula' in material:
-                if 'formulaComposition' in material['formula']:
-                    compositions.append(material['formula']['formulaComposition'])
-            if 'name' in material:
-                compositions.append(material['name'])
+            if "resolvedFormulas" in material:
+                for resolved_formula in material["resolvedFormulas"]:
+                    if "formulaComposition" in resolved_formula:
+                        compositions.append(resolved_formula["formulaComposition"])
+            elif "formula" in material:
+                if "formulaComposition" in material["formula"]:
+                    compositions.append(material["formula"]["formulaComposition"])
+            if "name" in material:
+                compositions.append(material["name"])
         return compositions
 
     @staticmethod
     def parse_superconductors_output(result, original_text):
         materials = []
 
-        for passage in result['passages']:
-            sentence_offset = original_text.index(passage['text'])
-            if 'spans' in passage:
-                spans = passage['spans']
-                for material_span in filter(lambda s: s['type'] == '<material>', spans):
-                    text_ = material_span['text']
+        for passage in result["passages"]:
+            sentence_offset = original_text.index(passage["text"])
+            if "spans" in passage:
+                spans = passage["spans"]
+                for material_span in filter(lambda s: s["type"] == "<material>", spans):
+                    text_ = material_span["text"]
 
                     base_material_information = {
                         "text": text_,
-                        "offset_start": sentence_offset + material_span['offset_start'],
-                        'offset_end': sentence_offset + material_span['offset_end']
+                        "offset_start": sentence_offset + material_span["offset_start"],
+                        "offset_end": sentence_offset + material_span["offset_end"],
                     }
 
                     materials.append(base_material_information)
@@ -765,13 +788,13 @@ class GrobidAggregationProcessor(GrobidQuantitiesProcessor, GrobidMaterialsProce
 
         item = {"page": box[0], "x": box[1], "y": box[2], "width": box[3], "height": box[4]}
         if color:
-            item['color'] = color
+            item["color"] = color
 
         if type:
-            item['type'] = type
+            item["type"] = type
 
         if border:
-            item['border'] = border
+            item["border"] = border
 
         return item
 
@@ -790,7 +813,7 @@ class GrobidAggregationProcessor(GrobidQuantitiesProcessor, GrobidMaterialsProce
             list[dict]: Pruned, non-overlapping spans sorted by offset.
         """
         # Sorting by offsets
-        sorted_entities = sorted(entities, key=lambda d: d['offset_start'])
+        sorted_entities = sorted(entities, key=lambda d: d["offset_start"])
 
         if len(entities) <= 1:
             return sorted_entities
@@ -806,96 +829,104 @@ class GrobidAggregationProcessor(GrobidQuantitiesProcessor, GrobidMaterialsProce
                 previous = current
                 continue
 
-            if previous['offset_start'] < current['offset_start'] \
-                    and previous['offset_end'] < current['offset_end'] \
-                    and (previous['offset_end'] < current['offset_start'] \
-                         and not (previous['text'] == "-" and current['text'][0].isdigit())):
+            if (
+                previous["offset_start"] < current["offset_start"]
+                and previous["offset_end"] < current["offset_end"]
+                and (
+                    previous["offset_end"] < current["offset_start"]
+                    and not (previous["text"] == "-" and current["text"][0].isdigit())
+                )
+            ):
                 previous = current
                 continue
 
-            if previous['offset_end'] < current['offset_end']:
-                if current['type'] == previous['type']:
+            if previous["offset_end"] < current["offset_end"]:
+                if current["type"] == previous["type"]:
                     # Type is the same
-                    if current['offset_start'] == previous['offset_end']:
-                        if current['type'] == 'property':
-                            if current['text'].startswith("."):
+                    if current["offset_start"] == previous["offset_end"]:
+                        if current["type"] == "property":
+                            if current["text"].startswith("."):
                                 print(
-                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
+                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>"
+                                )
                                 # current entity starts with a ".", suspiciously look like a truncated value
                                 to_be_removed.append(previous)
-                                current['text'] = previous['text'] + current['text']
-                                current['raw_value'] = current['text']
-                                current['offset_start'] = previous['offset_start']
-                            elif previous['text'].endswith(".") and current['text'][0].isdigit():
+                                current["text"] = previous["text"] + current["text"]
+                                current["raw_value"] = current["text"]
+                                current["offset_start"] = previous["offset_start"]
+                            elif previous["text"].endswith(".") and current["text"][0].isdigit():
                                 print(
-                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
+                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>"
+                                )
                                 # previous entity ends with ".", current entity starts with a number
                                 to_be_removed.append(previous)
-                                current['text'] = previous['text'] + current['text']
-                                current['raw_value'] = current['text']
-                                current['offset_start'] = previous['offset_start']
-                            elif previous['text'].startswith("-"):
+                                current["text"] = previous["text"] + current["text"]
+                                current["raw_value"] = current["text"]
+                                current["offset_start"] = previous["offset_start"]
+                            elif previous["text"].startswith("-"):
                                 print(
-                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
+                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>"
+                                )
                                 # previous starts with a `-`, sherlock this is another truncated value
-                                current['text'] = previous['text'] + current['text']
-                                current['raw_value'] = current['text']
-                                current['offset_start'] = previous['offset_start']
+                                current["text"] = previous["text"] + current["text"]
+                                current["raw_value"] = current["text"]
+                                current["offset_start"] = previous["offset_start"]
                                 to_be_removed.append(previous)
                             else:
                                 print("Other cases to be considered: ", previous, current)
                         else:
-                            if current['text'].startswith("-"):
+                            if current["text"].startswith("-"):
                                 print(
-                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
+                                    f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>"
+                                )
                                 # previous starts with a `-`, sherlock this is another truncated value
-                                current['text'] = previous['text'] + current['text']
-                                current['raw_value'] = current['text']
-                                current['offset_start'] = previous['offset_start']
+                                current["text"] = previous["text"] + current["text"]
+                                current["raw_value"] = current["text"]
+                                current["offset_start"] = previous["offset_start"]
                                 to_be_removed.append(previous)
                             else:
                                 print("Other cases to be considered: ", previous, current)
 
-                    elif previous['text'] == "-" and current['text'][0].isdigit():
-                        print(
-                            f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
+                    elif previous["text"] == "-" and current["text"][0].isdigit():
+                        print(f"Merging. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
                         # previous starts with a `-`, sherlock this is another truncated value
-                        current['text'] = previous['text'] + " " * (current['offset_start'] - previous['offset_end']) + \
-                                          current['text']
-                        current['raw_value'] = current['text']
-                        current['offset_start'] = previous['offset_start']
+                        current["text"] = (
+                            previous["text"] + " " * (current["offset_start"] - previous["offset_end"]) + current["text"]
+                        )
+                        current["raw_value"] = current["text"]
+                        current["offset_start"] = previous["offset_start"]
                         to_be_removed.append(previous)
                     else:
                         print(
-                            f"Overlapping. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
+                            f"Overlapping. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>"
+                        )
 
                         # take the largest one
-                        if len(previous['text']) > len(current['text']):
+                        if len(previous["text"]) > len(current["text"]):
                             to_be_removed.append(current)
-                        elif len(previous['text']) < len(current['text']):
+                        elif len(previous["text"]) < len(current["text"]):
                             to_be_removed.append(previous)
                         else:
                             to_be_removed.append(previous)
-                elif current['type'] != previous['type']:
-                    print(
-                        f"Overlapping. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
+                elif current["type"] != previous["type"]:
+                    print(f"Overlapping. {current['text']} <{current['type']}> with {previous['text']} <{previous['type']}>")
 
-                    if len(previous['text']) > len(current['text']):
+                    if len(previous["text"]) > len(current["text"]):
                         to_be_removed.append(current)
-                    elif len(previous['text']) < len(current['text']):
+                    elif len(previous["text"]) < len(current["text"]):
                         to_be_removed.append(previous)
                     else:
-                        if current['type'] == "material":
+                        if current["type"] == "material":
                             to_be_removed.append(previous)
                         else:
                             to_be_removed.append(current)
                 previous = current
 
-            elif previous['offset_end'] > current['offset_end']:
+            elif previous["offset_end"] > current["offset_end"]:
                 to_be_removed.append(current)
                 # the previous goes after the current, so we keep the previous and we discard the current
             else:
-                if current['type'] == "material":
+                if current["type"] == "material":
                     to_be_removed.append(previous)
                 else:
                     to_be_removed.append(current)
@@ -912,11 +943,11 @@ class XmlProcessor(BaseProcessor):
 
     def process_structure(self, input_file):
         text = ""
-        with open(input_file, encoding='utf-8') as fi:
+        with open(input_file, encoding="utf-8") as fi:
             text = fi.read()
 
         output_data = self.parse_xml(text)
-        output_data['filename'] = Path(input_file).stem.replace(".tei", "")
+        output_data["filename"] = Path(input_file).stem.replace(".tei", "")
 
         return output_data
 
@@ -931,25 +962,30 @@ class XmlProcessor(BaseProcessor):
 
     def process(self, text):
         output_data = OrderedDict()
-        soup = BeautifulSoup(text, 'xml')
+        soup = BeautifulSoup(text, "xml")
         text_blocks_children = get_children_list_supermat(soup, verbose=False)
 
         passages = []
-        output_data['passages'] = passages
-        passages.extend([
-            {
-                "text": self.post_process(''.join(text for text in sentence.find_all(text=True) if
-                                                  text.parent.name != "ref" or (
-                                                          text.parent.name == "ref" and text.parent.attrs[
-                                                      'type'] != 'bibr'))),
-                "type": "paragraph",
-                "section": "<body>",
-                "subSection": "<paragraph>",
-                "passage_id": str(paragraph_id) + str(sentence_id)
-            }
-            for paragraph_id, paragraph in enumerate(text_blocks_children) for
-            sentence_id, sentence in enumerate(paragraph)
-        ])
+        output_data["passages"] = passages
+        passages.extend(
+            [
+                {
+                    "text": self.post_process(
+                        "".join(
+                            text
+                            for text in sentence.find_all(text=True)
+                            if text.parent.name != "ref" or (text.parent.name == "ref" and text.parent.attrs["type"] != "bibr")
+                        )
+                    ),
+                    "type": "paragraph",
+                    "section": "<body>",
+                    "subSection": "<paragraph>",
+                    "passage_id": str(paragraph_id) + str(sentence_id),
+                }
+                for paragraph_id, paragraph in enumerate(text_blocks_children)
+                for sentence_id, sentence in enumerate(paragraph)
+            ]
+        )
 
         return output_data
 
@@ -959,12 +995,12 @@ def get_children_list_supermat(soup, use_paragraphs=False, verbose=False):
 
     child_name = "p" if use_paragraphs else "s"
     for child in soup.tei.children:
-        if child.name == 'teiHeader':
+        if child.name == "teiHeader":
             pass
             children.append(child.find_all("title"))
             children.extend([subchild.find_all(child_name) for subchild in child.find_all("abstract")])
             children.extend([subchild.find_all(child_name) for subchild in child.find_all("ab", {"type": "keywords"})])
-        elif child.name == 'text':
+        elif child.name == "text":
             children.extend([subchild.find_all(child_name) for subchild in child.find_all("body")])
 
     if verbose:
@@ -978,11 +1014,11 @@ def get_children_list_grobid(soup: object, use_paragraphs: object = True, verbos
 
     child_name = "p" if use_paragraphs else "s"
     for child in soup.TEI.children:
-        if child.name == 'teiHeader':
+        if child.name == "teiHeader":
             pass
             # children.extend(child.find_all("title", attrs={"level": "a"}, limit=1))
             # children.extend([subchild.find_all(child_name) for subchild in child.find_all("abstract")])
-        elif child.name == 'text':
+        elif child.name == "text":
             children.extend([subchild.find_all(child_name) for subchild in child.find_all("body")])
             children.extend([subchild.find_all("figDesc") for subchild in child.find_all("body")])
 
@@ -997,9 +1033,12 @@ def get_xml_nodes_header(soup: object, use_paragraphs: bool = True) -> list:
 
     header_elements = {
         "authors": [persNameNode for persNameNode in soup.teiHeader.find_all("persName")],
-        "abstract": [p_in_abstract for abstractNodes in soup.teiHeader.find_all("abstract") for p_in_abstract in
-                     abstractNodes.find_all(sub_tag)],
-        "title": [soup.teiHeader.fileDesc.title]
+        "abstract": [
+            p_in_abstract
+            for abstractNodes in soup.teiHeader.find_all("abstract")
+            for p_in_abstract in abstractNodes.find_all(sub_tag)
+        ],
+        "title": [soup.teiHeader.fileDesc.title],
     }
 
     return header_elements
@@ -1009,10 +1048,9 @@ def get_xml_nodes_body(soup: object, use_paragraphs: bool = True, verbose: bool 
     nodes = []
     tag_name = "p" if use_paragraphs else "s"
     for child in soup.TEI.children:
-        if child.name == 'text':
+        if child.name == "text":
             # nodes.extend([subchild.find_all(tag_name) for subchild in child.find_all("body")])
-            nodes.extend(
-                [subsubchild for subchild in child.find_all("body") for subsubchild in subchild.find_all(tag_name)])
+            nodes.extend([subsubchild for subchild in child.find_all("body") for subsubchild in subchild.find_all(tag_name)])
 
     if verbose:
         print(str(nodes))
@@ -1024,9 +1062,8 @@ def get_xml_nodes_back(soup: object, use_paragraphs: bool = True, verbose: bool 
     nodes = []
     tag_name = "p" if use_paragraphs else "s"
     for child in soup.TEI.children:
-        if child.name == 'text':
-            nodes.extend(
-                [subsubchild for subchild in child.find_all("back") for subsubchild in subchild.find_all(tag_name)])
+        if child.name == "text":
+            nodes.extend([subsubchild for subchild in child.find_all("back") for subsubchild in subchild.find_all(tag_name)])
 
     if verbose:
         print(str(nodes))
@@ -1037,9 +1074,8 @@ def get_xml_nodes_back(soup: object, use_paragraphs: bool = True, verbose: bool 
 def get_xml_nodes_figures(soup: object, verbose: bool = False) -> list:
     children = []
     for child in soup.TEI.children:
-        if child.name == 'text':
-            children.extend(
-                [subchild for subchilds in child.find_all("body") for subchild in subchilds.find_all("figDesc")])
+        if child.name == "text":
+            children.extend([subchild for subchilds in child.find_all("body") for subchild in subchilds.find_all("figDesc")])
 
     if verbose:
         print(str(children))

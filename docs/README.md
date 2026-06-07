@@ -97,6 +97,13 @@ GROBID_MATERIALS_URL=https://your-grobid-superconductors-url/
 | `GROBID_QUANTITIES_URL` | URL to a grobid-quantities server (for measurement NER) |
 | `GROBID_MATERIALS_URL` | URL to a grobid-superconductors server (for materials NER) |
 
+### Deploying the model endpoints
+
+The `PHI_URL`, `QWEN_URL`, and `EMBEDS_URL` endpoints above are served by the Modal apps
+in [`../document_qa/deployment/`](../document_qa/deployment/README.md). That README covers
+the required secrets, deploy commands, and how each printed `*.modal.run` URL maps back to
+these variables.
+
 ---
 
 ## Quick Start — Streamlit App

@@ -3,7 +3,7 @@ import os
 import modal
 
 vllm_image = (
-    modal.Image.debian_slim(python_version="3.10")
+    modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "vllm",
         "huggingface_hub[hf_transfer]==0.26.2",
@@ -40,11 +40,9 @@ VLLM_PORT = 8000
         "/root/.cache/huggingface": hf_cache_vol,
         "/root/.cache/vllm": vllm_cache_vol,
     },
-    secrets=[modal.Secret.from_name("document-qa-api-key")]
+    secrets=[modal.Secret.from_name("document-qa-api-key")],
 )
-@modal.concurrent(
-    max_inputs=5
-)  # how many requests can one replica handle? tune carefully!
+@modal.concurrent(max_inputs=5)  # how many requests can one replica handle? tune carefully!
 @modal.web_server(port=VLLM_PORT, startup_timeout=5 * MINUTES)
 def serve():
     import subprocess

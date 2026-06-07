@@ -47,18 +47,13 @@ class ModalEmbeddings(Embeddings):
         # Newlines degrade embedding quality for most models
         cleaned_text = [t.replace("\n", " ") for t in text]
 
-        payload = {'text': "\n".join(cleaned_text)}
+        payload = {"text": "\n".join(cleaned_text)}
 
         headers = {}
         if self.api_key:
-            headers = {'x-api-key': self.api_key}
+            headers = {"x-api-key": self.api_key}
 
-        response = requests.post(
-            self.url,
-            data=payload,
-            files=[],
-            headers=headers
-        )
+        response = requests.post(self.url, data=payload, files=[], headers=headers)
         response.raise_for_status()
 
         # print(response.text)
@@ -92,12 +87,15 @@ class ModalEmbeddings(Embeddings):
 
 
 if __name__ == "__main__":
+    # Smoke test against a deployed Modal embedding endpoint. The endpoint requires
+    # the x-api-key header, so set EMBEDS_URL and EMBEDS_API_KEY in the environment
+    # (see document_qa/deployment/README.md).
+    import os
+
     embeds = ModalEmbeddings(
-        url="https://lfoppiano--intfloat-multilingual-e5-large-instruct-embed-5da184.modal.run/",
-        model_name="intfloat/multilingual-e5-large-instruct"
+        url=os.environ["EMBEDS_URL"],
+        model_name="intfloat/multilingual-e5-large-instruct",
+        api_key=os.environ.get("EMBEDS_API_KEY"),
     )
 
-    print(embeds.embed(
-        ["We are surrounded by stupid kids",
-         "We are interested in the future of AI"]
-    ))
+    print(embeds.embed(["We are surrounded by stupid kids", "We are interested in the future of AI"]))

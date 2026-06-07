@@ -22,7 +22,7 @@ hf_cache_vol = modal.Volume.from_name("huggingface-cache", create_if_missing=Tru
 vllm_cache_vol = modal.Volume.from_name("vllm-cache", create_if_missing=True)
 
 
-app = modal.App("gwen-0.6b-qa-vllm")
+app = modal.App("qwen-0.6b-qa-vllm")
 
 N_GPU = 1
 MINUTES = 60  # seconds
@@ -39,11 +39,9 @@ VLLM_PORT = 8000
         "/root/.cache/huggingface": hf_cache_vol,
         "/root/.cache/vllm": vllm_cache_vol,
     },
-    secrets=[modal.Secret.from_name("document-qa-api-key")]
+    secrets=[modal.Secret.from_name("document-qa-api-key")],
 )
-@modal.concurrent(
-    max_inputs=5
-)  # how many requests can one replica handle? tune carefully!
+@modal.concurrent(max_inputs=5)  # how many requests can one replica handle? tune carefully!
 @modal.web_server(port=VLLM_PORT, startup_timeout=5 * MINUTES)
 def serve():
     import subprocess
@@ -55,7 +53,8 @@ def serve():
         MODEL_NAME,
         "--revision",
         MODEL_REVISION,
-        "--enable-reasoning",
+        # --reasoning-parser alone enables reasoning; the old --enable-reasoning
+        # flag was removed in recent vLLM releases.
         "--reasoning-parser",
         "deepseek_r1",
         "--max-model-len",

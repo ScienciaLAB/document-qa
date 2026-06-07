@@ -14,8 +14,8 @@ from tests.resources import TEST_DATA_PATH
 
 
 def test_get_xml_nodes_body_paragraphs():
-    with open(os.path.join(TEST_DATA_PATH, "2312.07559.paragraphs.tei.xml"), 'r') as fo:
-        soup = BeautifulSoup(fo, 'xml')
+    with open(os.path.join(TEST_DATA_PATH, "2312.07559.paragraphs.tei.xml"), "r") as fo:
+        soup = BeautifulSoup(fo, "xml")
 
     nodes = get_xml_nodes_body(soup, use_paragraphs=True)
 
@@ -23,8 +23,8 @@ def test_get_xml_nodes_body_paragraphs():
 
 
 def test_get_xml_nodes_body_sentences():
-    with open(os.path.join(TEST_DATA_PATH, "2312.07559.sentences.tei.xml"), 'r') as fo:
-        soup = BeautifulSoup(fo, 'xml')
+    with open(os.path.join(TEST_DATA_PATH, "2312.07559.sentences.tei.xml"), "r") as fo:
+        soup = BeautifulSoup(fo, "xml")
 
     children = get_xml_nodes_body(soup, use_paragraphs=False)
 
@@ -32,8 +32,8 @@ def test_get_xml_nodes_body_sentences():
 
 
 def test_get_xml_nodes_figures():
-    with open(os.path.join(TEST_DATA_PATH, "2312.07559.paragraphs.tei.xml"), 'r') as fo:
-        soup = BeautifulSoup(fo, 'xml')
+    with open(os.path.join(TEST_DATA_PATH, "2312.07559.paragraphs.tei.xml"), "r") as fo:
+        soup = BeautifulSoup(fo, "xml")
 
     children = get_xml_nodes_figures(soup)
 
@@ -41,8 +41,8 @@ def test_get_xml_nodes_figures():
 
 
 def test_get_xml_nodes_header_paragraphs():
-    with open(os.path.join(TEST_DATA_PATH, "2312.07559.paragraphs.tei.xml"), 'r') as fo:
-        soup = BeautifulSoup(fo, 'xml')
+    with open(os.path.join(TEST_DATA_PATH, "2312.07559.paragraphs.tei.xml"), "r") as fo:
+        soup = BeautifulSoup(fo, "xml")
 
     children = get_xml_nodes_header(soup)
 
@@ -50,12 +50,13 @@ def test_get_xml_nodes_header_paragraphs():
 
 
 def test_get_xml_nodes_header_sentences():
-    with open(os.path.join(TEST_DATA_PATH, "2312.07559.sentences.tei.xml"), 'r') as fo:
-        soup = BeautifulSoup(fo, 'xml')
+    with open(os.path.join(TEST_DATA_PATH, "2312.07559.sentences.tei.xml"), "r") as fo:
+        soup = BeautifulSoup(fo, "xml")
 
     children = get_xml_nodes_header(soup, use_paragraphs=False)
 
     assert sum([len(child) for k, child in children.items()]) == 15
+
 
 def test_grobid_service_error_default_status_code():
     error = GrobidServiceError("Something went wrong")
@@ -68,6 +69,7 @@ def test_grobid_service_error_stores_status_code():
     assert error.status_code == 502
     assert "Bad gateway" in str(error)
 
+
 @pytest.fixture
 def grobid_processor():
     with patch("document_qa.grobid_processors.GrobidClient") as mock_client_class:
@@ -79,9 +81,7 @@ def grobid_processor():
 
 # Connection/timeout failures
 def test_process_structure_raises_on_connection_error(grobid_processor):
-    grobid_processor.grobid_client.process_pdf.side_effect = requests.exceptions.ConnectionError(
-        "Connection refused"
-    )
+    grobid_processor.grobid_client.process_pdf.side_effect = requests.exceptions.ConnectionError("Connection refused")
     with pytest.raises(GrobidServiceError) as exc_info:
         grobid_processor.process_structure("fake.pdf")
 
@@ -90,9 +90,7 @@ def test_process_structure_raises_on_connection_error(grobid_processor):
 
 
 def test_process_structure_raises_on_timeout(grobid_processor):
-    grobid_processor.grobid_client.process_pdf.side_effect = requests.exceptions.Timeout(
-        "Request timed out"
-    )
+    grobid_processor.grobid_client.process_pdf.side_effect = requests.exceptions.Timeout("Request timed out")
     with pytest.raises(GrobidServiceError) as exc_info:
         grobid_processor.process_structure("fake.pdf")
 
@@ -102,9 +100,7 @@ def test_process_structure_raises_on_timeout(grobid_processor):
 
 # Local/usage errors must NOT be masked as a Grobid outage
 def test_process_structure_does_not_mask_local_errors(grobid_processor):
-    grobid_processor.grobid_client.process_pdf.side_effect = FileNotFoundError(
-        "no such file"
-    )
+    grobid_processor.grobid_client.process_pdf.side_effect = FileNotFoundError("no such file")
     with pytest.raises(FileNotFoundError):
         grobid_processor.process_structure("fake.pdf")
 
@@ -131,9 +127,7 @@ def test_process_structure_raises_on_500_status(grobid_processor):
 
 
 def test_process_structure_includes_reason_from_error_body(grobid_processor):
-    grobid_processor.grobid_client.process_pdf.return_value = (
-        "fake.pdf", 500, "[BAD_INPUT_DATA] PDF could not be parsed."
-    )
+    grobid_processor.grobid_client.process_pdf.return_value = ("fake.pdf", 500, "[BAD_INPUT_DATA] PDF could not be parsed.")
 
     with pytest.raises(GrobidServiceError) as exc_info:
         grobid_processor.process_structure("fake.pdf")
