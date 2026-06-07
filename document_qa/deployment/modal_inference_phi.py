@@ -3,7 +3,7 @@ import os
 import modal
 
 vllm_image = (
-    modal.Image.debian_slim(python_version="3.10")
+    modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "vllm",
         "huggingface_hub[hf_transfer]==0.26.2",
