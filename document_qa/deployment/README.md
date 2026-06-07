@@ -58,7 +58,7 @@ Each deploy prints a public `https://<...>.modal.run` URL. Copy it into `.env`:
 ```env
 PHI_URL=https://<account>--phi-4-mini-instruct-qa-vllm-serve.modal.run/v1
 QWEN_URL=https://<account>--qwen-0-6b-qa-vllm-serve.modal.run/v1
-EMBEDS_URL=https://<account>--intfloat-multilingual-e5-large-instruct-embeddings-embed.modal.run
+EMBEDS_URL=https://<account>--embeddings-multilang.modal.run   # English-only: --embeddings-en
 API_KEY=<your-llm-token>            # matches document-qa-api-key
 EMBEDS_API_KEY=<your-embedding-token>  # matches document-qa-embedding-key
 ```
@@ -101,4 +101,5 @@ These knobs live near the top of each script (or in `_embeddings_app.py`):
 | `gpu` | `@app.function` / `@app.cls` | `A10G` is cheaper; `L40S` is faster. Embeddings default to `L40S`, inference to `A10G`. |
 | `scaledown_window` | decorator | Idle time before a replica is stopped (cost vs. cold starts). |
 | `max_inputs` | `@modal.concurrent` | Concurrent requests per replica — tune to GPU memory. |
+| `LABEL` | `modal_embeddings_*.py` | Pins the public URL (`--<label>.modal.run`). Without it Modal truncates the long auto-name and appends a random hash. |
 | `FAST_BOOT` | `modal_inference_phi.py` | `--enforce-eager` for faster cold starts vs. peak throughput. |
