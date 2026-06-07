@@ -194,10 +194,14 @@ class GrobidProcessor(BaseProcessor):
             raise GrobidServiceError("Grobid service did not respond.") from exc
 
         if status != 200:
-            raise GrobidServiceError(
-                f"Grobid service returned status {status}.",
-                status_code=status
-            )
+            # Grobid attaches a human-readable reason to error responses
+            # (e.g. a 500 body explaining what went wrong). Surface it
+            # alongside the status code instead of discarding it.
+            reason = text.strip() if text else ""
+            message = f"Grobid service returned status {status}."
+            if reason:
+                message += f" {reason}"
+            raise GrobidServiceError(message, status_code=status)
 
         # Grobid can answer 200 with an empty body (e.g. it gave up on the PDF).
         if not text or not text.strip():

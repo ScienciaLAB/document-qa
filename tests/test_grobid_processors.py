@@ -130,6 +130,20 @@ def test_process_structure_raises_on_500_status(grobid_processor):
     assert "500" in str(exc_info.value)
 
 
+def test_process_structure_includes_reason_from_error_body(grobid_processor):
+    grobid_processor.grobid_client.process_pdf.return_value = (
+        "fake.pdf", 500, "[BAD_INPUT_DATA] PDF could not be parsed."
+    )
+
+    with pytest.raises(GrobidServiceError) as exc_info:
+        grobid_processor.process_structure("fake.pdf")
+
+    assert exc_info.value.status_code == 500
+    message = str(exc_info.value)
+    assert "500" in message
+    assert "[BAD_INPUT_DATA] PDF could not be parsed." in message
+
+
 def test_process_structure_raises_on_404_status(grobid_processor):
     grobid_processor.grobid_client.process_pdf.return_value = ("fake.pdf", 404, None)
 
