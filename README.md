@@ -46,6 +46,8 @@ Additionally, this frontend provides the visualisation of named entities on LLM 
 
  **For full technical documentation** of the `document-qa-engine` library **[`docs/README.md`](docs/README.md)**.
 
+ **To deploy the LLM and embedding endpoints** on Modal.com, see **[`document_qa/deployment/README.md`](document_qa/deployment/README.md)**.
+
 ### Embedding selection
 In the latest version, there is the possibility to select both embedding functions and LLMs. There are some limitations, OpenAI embeddings cannot be used with open source models, and vice-versa. 
 
@@ -83,7 +85,7 @@ For more information, see the [details](https://docs.trychroma.com/troubleshooti
 Please read carefully:
 
 - Avoid uploading sensitive data. We temporarily store text from the uploaded PDF documents only for processing your request, and we disclaim any responsibility for subsequent use or handling of the submitted data by third-party LLMs.
-- Mistral and Zephyr are FREE to use and do not require any API, but as we leverage the free API entrypoint, there is no guarantee that all requests will go through. Use at your own risk.
+- The public demo serves open models (Phi-4-mini-instruct, Qwen3) self-hosted on [Modal.com](https://www.modal.com) under a limited monthly compute budget, so there is no guarantee that all requests will go through. Use at your own risk.
 - We do not assume responsibility for how the data is utilized by the LLM end-points API.
 
 ## Development notes

@@ -39,3 +39,11 @@ dependencies = {file = ["requirements.txt"]}
 Homepage = "https://document-insights.streamlit.app"
 Repository = "https://github.com/lfoppiano/document-qa"
 Changelog = "https://github.com/lfoppiano/document-qa/blob/main/CHANGELOG.md"
+
+[tool.ruff]
+# Mirrors the previous flake8 configuration (line length 127, GitHub editor width).
+line-length = 127
+
+[tool.ruff.lint]
+# pycodestyle errors (E) + pyflakes (F), matching the old flake8 default rule set.
+select = ["E", "F"]
