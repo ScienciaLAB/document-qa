@@ -10,11 +10,11 @@ from _pytest._py.path import LocalPath
 LOGGER = logging.getLogger(__name__)
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def setup_logging():
     logging.root.handlers = []
-    logging.basicConfig(level='INFO')
-    logging.getLogger('tests').setLevel('DEBUG')
+    logging.basicConfig(level="INFO")
+    logging.getLogger("tests").setLevel("DEBUG")
     # logging.getLogger('sciencebeam_trainer_delft').setLevel('DEBUG')
 
 
@@ -22,7 +22,7 @@ def _backport_assert_called(mock: MagicMock):
     assert mock.called
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def patch_magicmock():
     try:
         MagicMock.assert_called
@@ -34,4 +34,3 @@ def patch_magicmock():
 def temp_dir(tmpdir: LocalPath):
     # convert to standard Path
     return Path(str(tmpdir))
-

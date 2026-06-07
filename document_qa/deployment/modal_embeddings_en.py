@@ -27,9 +27,7 @@ app = modal.App("intfloat-e5-large-v2-embeddings")
 class EmbeddingModel:
     @modal.enter()
     def load_model(self):
-        self.tokenizer, self.model, self.device = load_embedding_model(
-            MODEL_NAME, MODEL_REVISION
-        )
+        self.tokenizer, self.model, self.device = load_embedding_model(MODEL_NAME, MODEL_REVISION)
 
     @modal.fastapi_endpoint(method="POST")
     def embed(self, request: Request, text: Annotated[str, Form()]):

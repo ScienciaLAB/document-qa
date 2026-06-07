@@ -39,11 +39,9 @@ VLLM_PORT = 8000
         "/root/.cache/huggingface": hf_cache_vol,
         "/root/.cache/vllm": vllm_cache_vol,
     },
-    secrets=[modal.Secret.from_name("document-qa-api-key")]
+    secrets=[modal.Secret.from_name("document-qa-api-key")],
 )
-@modal.concurrent(
-    max_inputs=5
-)  # how many requests can one replica handle? tune carefully!
+@modal.concurrent(max_inputs=5)  # how many requests can one replica handle? tune carefully!
 @modal.web_server(port=VLLM_PORT, startup_timeout=5 * MINUTES)
 def serve():
     import subprocess

@@ -47,18 +47,13 @@ class ModalEmbeddings(Embeddings):
         # Newlines degrade embedding quality for most models
         cleaned_text = [t.replace("\n", " ") for t in text]
 
-        payload = {'text': "\n".join(cleaned_text)}
+        payload = {"text": "\n".join(cleaned_text)}
 
         headers = {}
         if self.api_key:
-            headers = {'x-api-key': self.api_key}
+            headers = {"x-api-key": self.api_key}
 
-        response = requests.post(
-            self.url,
-            data=payload,
-            files=[],
-            headers=headers
-        )
+        response = requests.post(self.url, data=payload, files=[], headers=headers)
         response.raise_for_status()
 
         # print(response.text)
@@ -103,7 +98,4 @@ if __name__ == "__main__":
         api_key=os.environ.get("EMBEDS_API_KEY"),
     )
 
-    print(embeds.embed(
-        ["We are surrounded by stupid kids",
-         "We are interested in the future of AI"]
-    ))
+    print(embeds.embed(["We are surrounded by stupid kids", "We are interested in the future of AI"]))

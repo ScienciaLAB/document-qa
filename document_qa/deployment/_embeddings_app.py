@@ -98,15 +98,11 @@ def run_embed(tokenizer, model, device, request: Request, text: str):
     print(f"Start embedding {len(texts)} texts")
     try:
         with torch.no_grad():
-            batch_dict = tokenizer(
-                texts, padding=True, truncation=True, return_tensors="pt"
-            )
+            batch_dict = tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
             batch_dict = {k: v.to(device) for k, v in batch_dict.items()}
 
             outputs = model(**batch_dict)
-            embeddings = average_pool(
-                outputs.last_hidden_state, batch_dict["attention_mask"]
-            )
+            embeddings = average_pool(outputs.last_hidden_state, batch_dict["attention_mask"])
             embeddings = F.normalize(embeddings, p=2, dim=1)
             embeddings = embeddings.cpu().numpy().tolist()
 
